@@ -101,10 +101,10 @@ flowchart LR
 #### 6.1 Todo list
 
 1. [ ] Set up `slam-core` as an installable Python package with `pyproject.toml`
-2. [ ] Extract `EvalCaseCollection`, `Model`, and `Scorer` base classes from `slam-eval` into `slam-core`
-3. [ ] Add training mixins to `slam-core`
+2. [ ] Extract shared abstractions from existing repos into `slam-core`
+3. [ ] Extend `slam-core` with training support (mixins, loss functions, etc.)
 4. [ ] Update existing repos (`slam-eval`, `slam-datagen`, `slam-monitoring`) to depend on `slam-core`
-5. [ ] Create `slam-train` repo skeleton with Hydra config and engine registry
-6. [ ] Create `slam-rl` repo skeleton
+5. [ ] Create new component repos as needed (training, RL, etc.) with consistent structure
+6. [ ] Extend component repos as needed to cover new research use cases
 7. [ ] Establish shared Hydra defaults and `user_settings` pattern across all repos
 8. [ ] Verify end-to-end data flow: datagen → train → eval → monitoring
