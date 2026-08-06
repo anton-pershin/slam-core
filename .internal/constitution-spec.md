@@ -40,20 +40,74 @@ The goal is to provide a simple, controllable, and flexible ecosystem for all re
 
 ### 4. Insight
 
-[List alternative ideas describing what should be implemented to satisfy these requirements. Describe at least two ideas and explain why you choose a particular idea]
+**Option 1: Centralized monorepo.** Keep all components (`datagen`, `train`, `rl`, `eval`, `monitoring`) in a single repository with subdirectories. 
+- Pros: Simple dependency management, easy cross-component changes, single spec location.
+- Cons: Bloated repo, hard to maintain independent versioning, students must navigate a large codebase.
+
+**Option 2: Independent repos with shared core.** Each component is a separate repository depending on `slam-core` for shared abstractions.
+- Pros: Clean separation of concerns, independent versioning, focused scope for each student, reusable core.
+- Cons: Requires package management across repos, more repos to maintain.
+
+**Option 3: Independent repos with no shared core.** Each component reimplements its own abstractions.
+- Pros: Maximum independence, no cross-repo dependencies.
+- Cons: Duplication, divergent interfaces, brittle integration between training and evaluation.
+
+**Decision:** Option 2. The modularity and separation benefits far outweigh the overhead of managing a shared package. The `slam-core` repo serves as both the shared library and the SDD management repo for the ecosystem.
 
 ### 5. Overall solution design
 
 #### 5.1 High-level design
 
-[Mermaid diagram (typically, flowchart, but it is ultimately up to a planner) describing the high-level design]
+```mermaid
+flowchart LR
+    subgraph "Management & Core"
+        A[slam-core]
+    end
+
+    subgraph "Pipeline"
+        B[slam-datagen]
+        C[slam-train]
+        D[slam-rl]
+        E[slam-eval]
+        F[slam-monitoring]
+    end
+
+    A -.->|shared abstractions| B
+    A -.->|shared abstractions| C
+    A -.->|shared abstractions| D
+    A -.->|shared abstractions| E
+    A -.->|shared abstractions| F
+
+    B ==>|datasets| C
+    B ==>|datasets| E
+    C ==>|trained model| E
+    D ==>|trained model| E
+    C ==>|logs| F
+    E ==>|results| F
+```
 
 #### 5.2 Core components
 
-[List all the core components of the solution]
+1. **`slam-core` package** — Shared abstractions:
+   - `EvalCaseCollection`: Dataset abstraction used by both training and evaluation
+   - `Model`: Inference interface, extended via mixins for training (`CausalLMMixin`, `ClassificationMixin`, etc.)
+   - `Scorer`: Metric computation interface, reused for training validation and evaluation
+2. **`slam-core` management layer** — SDD specs in `.internal/`, constitution spec governing the ecosystem, general/kiss specs for individual components
+3. **Hydra config structure** — Unified config tree with shared defaults, consistent `user_settings` pattern across all repos
+4. **Engine registry pattern** — Pluggable backend abstraction (training engines, inference engines, monitoring frontends)
 
 ### 6. Implementation plan
 
 #### 6.1 Todo list
 
-[Write a todo list with all the steps necessary to create an implementation]
+1. [ ] Set up `slam-core` as an installable Python package with `pyproject.toml`
+2. [ ] Extract `EvalCaseCollection` base class from `slam-eval` and move to `slam-core`
+3. [ ] Extract `Model` base class and `Scorer` base class from `slam-eval` and move to `slam-core`
+4. [ ] Add training mixins to `slam-core` (`CausalLMMixin`, `ClassificationMixin`, `RegressionMixin`)
+5. [ ] Update `slam-eval` to depend on `slam-core` and import shared classes
+6. [ ] Update `slam-datagen` to depend on `slam-core` and use `EvalCaseCollection`
+7. [ ] Update `slam-monitoring` to depend on `slam-core`
+8. [ ] Create `slam-train` repo with Hydra config structure and engine registry skeleton
+9. [ ] Establish shared Hydra defaults and user_settings pattern across all repos
+10. [ ] Add constitution specs to each implementation repo (or use `slam-core` as central management)
+11. [ ] Verify end-to-end data flow: datagen → train → eval → monitoring
