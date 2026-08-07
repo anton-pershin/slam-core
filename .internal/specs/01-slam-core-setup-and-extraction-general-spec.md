@@ -69,8 +69,9 @@ This is a straightforward package setup and extraction — no complex architectu
 3. [ ] Fix imports in the copied files to remove `slam-eval` references
 4. [ ] Create `config/user_settings/user_settings.yaml` (based on `slam-eval` example)
 5. [ ] Write tests for class imports and basic functionality
-6. [ ] Run linters and fix any issues
-7. [ ] Verify `pip install -e .` works
+6. [ ] Fill `docs/` with package documentation
+7. [ ] Run linters and fix any issues
+8. [ ] Verify `pip install -e .` works
 
 #### 6.2 Modification summary
 
