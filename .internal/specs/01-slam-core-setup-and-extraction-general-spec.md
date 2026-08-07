@@ -18,7 +18,7 @@ The constitution spec (Step 6.1 and 6.2) requires `slam-core` to be an installab
 #### 2.1 Functional requirements
 
 1. `slam-core` must be installable as a Python package via `pip install -e .`
-2. `slam-core` must follow the Hydra repo template: `config/`, `pyproject.toml`, `requirements.txt`, `requirements_dev.txt`, `tests/`, `run_linters.sh`, and the `slam_core/` source directory
+2. `slam-core` must follow the Hydra repo template: `config/`, `docs/`, `pyproject.toml`, `requirements.txt`, `requirements_dev.txt`, `tests/`, `run_linters.sh`, and the `slam_core/` source directory
 3. `slam-core` must include the `collections`, `model`, and `scorer` modules taken from `slam-eval`
 4. The extracted classes must be importable as `from slam_core.collections import EvalCaseCollection`, etc.
 5. `slam-core` must include `config/user_settings/user_settings.yaml` so that downstream repos can extend the config tree via Hydra's `searchpath` plugin (`pkg://slam_core.config`)
@@ -36,29 +36,55 @@ The constitution spec (Step 6.1 and 6.2) requires `slam-core` to be an installab
 
 ### 4. Insight
 
-[List alternative ideas describing what should be implemented to satisfy these requirements. Describe at least two ideas and explain why you choose a particular idea]
+**Option 1: Copy classes verbatim.** Take `collections.py`, `model.py`, `scorer.py` from `slam-eval` and paste them into `slam-core` as-is.
+- **Pros:** Fastest path, minimal risk of introducing bugs, preserves existing functionality.
+- **Cons:** May include `slam-eval`-specific imports or dependencies that don't belong in a shared core.
+
+**Option 2: Refactor during extraction.** Clean up the classes while moving them, removing `slam-eval`-specific code, adding proper abstractions.
+- **Pros:** Cleaner code in `slam-core`, better separation of concerns.
+- **Cons:** Higher risk of breaking existing functionality, requires careful diffing and testing.
+
+**Decision:** Option 1 for now. Copy the classes verbatim first, then clean up any `slam-eval`-specific dependencies within this same spec. This minimizes risk and keeps the extraction straightforward.
 
 ### 5. Overall solution design
 
 #### 5.1 High-level design
 
-[Mermaid diagram (typically, flowchart, but it is ultimately up to a planner) describing the high-level design]
+This is a straightforward package setup and extraction — no complex architecture needed. The flow is: copy files from `slam-eval` → fix imports → package with `pyproject.toml` → verify with tests.
 
 #### 5.2 Core components
 
-[List all the core components of the solution]
+1. `slam_core/collections.py` — `EvalCaseCollection` base class (from `slam-eval`)
+2. `slam_core/model.py` — `Model` base class (from `slam-eval`)
+3. `slam_core/scorer.py` — `Scorer` base class (from `slam-eval`)
+4. `slam-core/config/` — Hydra config directory with `user_settings/`
+5. `slam-core/docs/` — Documentation directory
 
 ### 6. Implementation plan
 
 #### 6.1 Todo list
 
-[Write a todo list with all the steps necessary to create an implementation]
+1. [ ] Create package structure: `slam_core/`, `config/`, `docs/`, `tests/`, `pyproject.toml`, `requirements.txt`, `requirements_dev.txt`, `run_linters.sh`
+2. [ ] Copy `collections.py`, `model.py`, `scorer.py` from `slam-eval` into `slam_core/`
+3. [ ] Fix imports in the copied files to remove `slam-eval` references
+4. [ ] Create `config/user_settings/user_settings.yaml` (based on `slam-eval` example)
+5. [ ] Write tests for class imports and basic functionality
+6. [ ] Run linters and fix any issues
+7. [ ] Verify `pip install -e .` works
 
 #### 6.2 Modification summary
 
-[Fill the table below specifying which files are going to be modified and which are going to be created]
-
 | File | Action |
 |------|--------|
-| ... | Modified: add X, modify Y, etc. |
-| ... | New |
+| `slam-core/pyproject.toml` | New |
+| `slam-core/requirements.txt` | New |
+| `slam-core/requirements_dev.txt` | New |
+| `slam-core/run_linters.sh` | New |
+| `slam-core/slam_core/__init__.py` | New |
+| `slam-core/slam_core/collections.py` | New (from `slam-eval`) |
+| `slam-core/slam_core/model.py` | New (from `slam-eval`) |
+| `slam-core/slam_core/scorer.py` | New (from `slam-eval`) |
+| `slam-core/config/user_settings/user_settings.yaml` | New |
+| `slam-core/docs/` | New |
+| `slam-core/tests/__init__.py` | New |
+| `slam-core/tests/test_imports.py` | New |
