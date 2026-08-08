@@ -1,0 +1,7 @@
+datasets
+emoji
+hydra-core >= 1.3
+kygs
+nltk
+rally
+syllapy

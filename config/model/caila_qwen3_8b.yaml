@@ -1,0 +1,10 @@
+_target_: slam_eval.model.LlmViaOpenAiApi
+_recursive_: true
+name: caila-qwen3-8b
+llm:
+  _target_: rally.llm.OpenAiApiLlmWithAuthorization
+  url: https://caila.io/api/openai/v1/chat/completions
+  api_key: ${user_settings.caila_api_key}
+  model: qwen/qwen3-8b
+  max_concurrent_requests: 16
+  enable_thinking: false

@@ -1,0 +1,2 @@
+model_root: /path/to/models
+dataset_root: /path/to/datasets

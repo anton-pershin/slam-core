@@ -1,0 +1,2 @@
+_target_: slam_eval.scorer.ExactMatch
+name: "exact_match"

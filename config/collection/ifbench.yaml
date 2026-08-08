@@ -1,0 +1,4 @@
+_target_: slam_eval.collections.ifbench.IFBench
+name: ifbench
+jsonl_path: ${dataset_root}/ifbench/IFBench_test.jsonl
+download_url: "https://raw.githubusercontent.com/allenai/IFBench/main/data/IFBench_test.jsonl"

@@ -1,0 +1,7 @@
+_target_: slam_eval.collections.text_classification.RedditPostsSmallDataset
+_recursive_: true
+name: text_classification__reddit_posts_small_dataset
+message_provider:
+  _target_: kygs.message_provider.MessageProvider.from_reddit_posts_csv
+  csv_path: ${dataset_root}/kygs/reddit_posts/small_dataset_100/annotated_posts.csv
+  stores_true_labels: false

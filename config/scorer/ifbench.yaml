@@ -1,0 +1,4 @@
+_target_: slam_eval.ifbench.IFBenchScorer
+name: "ifbench_scorer"
+checker_factory:
+  _target_: slam_eval.ifbench.build_checker_factory

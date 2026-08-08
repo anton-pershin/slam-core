@@ -1,0 +1,19 @@
+_target_: slam_eval.collections.text_generation.MergeQuality
+name: merge_quality__merge_quality_easy
+jsonl_path: ${dataset_root}/merge_quality/merge_quality_dataset_easy.jsonl
+user_prompt_template: |
+  ### Instruction
+
+  Merge the following data chunks based on unique identifiers of the target person provided below into a single JSON whose format is described below. Each data chunk may or may not contain information about one of the unique identifiers. If there is no unique identifier in a chunk or its value does not correspond to the target person, this chunk must be ignored.
+
+  ### Output format
+  
+  Your answer must contain only a JSON representing the merged data chunks, nothing else. Its fields must reflect the structure of the data chunks. If a data chunk has the JSON format, its fields are directly transferred to the merged JSON. If a data chunk has the XML format, its tag names become keys in the merged JSON and the nested structure is transferred to the merged JSON. If a data chunk has the markdown table format, a nested structure must be obtained by splitting the column names by double underscore "__". Each value in the merged JSON must have at least one character (i.e., empty values are not allowed). Finally, the merged JSON must exclude unique identifiers
+
+  ### Unique identifiers of the target person
+
+  {unique_identifiers}
+
+  ### Data chunks
+  
+  {data_chunks}

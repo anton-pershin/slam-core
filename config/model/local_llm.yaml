@@ -1,0 +1,10 @@
+_target_: slam_eval.model.LlmViaOpenAiApi
+_recursive_: true
+name: local_llm
+llm:
+  _target_: rally.llm.LocalLlm
+  url: http://localhost:9191/v1/chat/completions
+  model_family: qwen2.5
+  max_concurrent_requests: 16
+  max_output_tokens: 1024
+

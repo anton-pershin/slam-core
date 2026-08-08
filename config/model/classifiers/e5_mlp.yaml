@@ -1,0 +1,13 @@
+_target_: slam_eval.model.EmbeddingBasedTextClassifier
+_recursive_: true
+name: e5_mlp_classifier
+embedding_model:
+  _target_: kygs.text_embedding.TextEmbeddingModel
+  model: "intfloat/multilingual-e5-base"
+  batch_size: 1
+  max_input_seq_length: 512
+  device: "mps"
+  verbose: true
+classifier:
+  _target_: kygs.classifier.TextClassifier.load_model
+  model_path: ${user_settings.model_root}/mlp_classifier_v0
