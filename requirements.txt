@@ -1,7 +1,8 @@
 datasets
 emoji
 hydra-core >= 1.3
-kygs
 nltk
-rally
 syllapy
+
+rally @ git+https://github.com/anton-pershin/rally.git
+kygs @ git+https://github.com/anton-pershin/kygs.git
