@@ -1,2 +1,2 @@
-_target_: slam_eval.scorer.IgnoreAllWhitespaces
+_target_: slam_core.scorers.base.IgnoreAllWhitespaces
 name: "ignore_all_whitespaces"

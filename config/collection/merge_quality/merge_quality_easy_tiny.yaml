@@ -1,6 +1,6 @@
 _target_: slam_core.collections.text_generation.MergeQuality
-name: merge_quality__merge_quality_easy
-jsonl_path: ${dataset_root}/merge_quality/merge_quality_dataset_easy.jsonl
+name: merge_quality__merge_quality_easy_tiny
+jsonl_path: ${dataset_root}/merge_quality/merge_quality_dataset_easy_tiny.jsonl
 user_prompt_template: |
   ### Instruction
 

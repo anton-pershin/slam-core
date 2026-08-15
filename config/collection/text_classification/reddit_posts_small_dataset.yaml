@@ -1,4 +1,4 @@
-_target_: slam_eval.collections.text_classification.RedditPostsSmallDataset
+_target_: slam_core.collections.text_classification.RedditPostsSmallDataset
 _recursive_: true
 name: text_classification__reddit_posts_small_dataset
 message_provider:

@@ -1,4 +1,4 @@
-_target_: slam_eval.collections.text_generation.BigBenchHard
+_target_: slam_core.collections.text_generation.BigBenchHard
 name: big_bench_hard__tracking_shuffled_objects_three_objects
 dataset_name: "lukaemon/bbh"
 split: test

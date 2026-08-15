@@ -34,7 +34,7 @@ The goal is to provide a simple, controllable, and flexible ecosystem for all re
 2. **End-to-end data flow**: A dataset produced by `slam-datagen` can be consumed by both `slam-train` for training and `slam-eval` for evaluation without manual conversion
 3. **Train-eval handoff**: A model trained by `slam-train` can be loaded and evaluated by `slam-eval` using the same collection and scorer definitions
 4. **Monitoring integration**: Evaluation results from `slam-eval` and training logs from `slam-train` can be ingested by `slam-monitoring` to produce reports
-5. **Config consistency**: All repos use Hydra with a compatible config structure (shared defaults tree, consistent user settings pattern). Downstream repos extend `slam-core` configs via Hydra's `searchpath` plugin (`pkg://slam_core.config`)
+5. **Config consistency**: All repos use Hydra with a compatible config structure (shared defaults tree, consistent user settings pattern). Shared configs (collections, models, scorers) are stored in a separate location and consumed by downstream repos via Hydra's `searchpath` plugin with a `file://` path. Each downstream repo keeps only its own unique configs (e.g., `config_main.yaml`, `user_settings`, storage adapters) and extends shared defaults via searchpath. The path to shared configs is configured via `user_settings.shared_config_path` (or equivalent environment variable), making it easy to switch to a dedicated config repository in the future.
 6. **Engine pluggability**: The evaluation and training pipelines allow swapping the backend engine via a single config change (e.g., `engine: trl` → `engine: unsloth`)
 7. **SDD compliance**: All repos follow the SDD methodology with constitution and general/kiss specs in `.internal/`
 

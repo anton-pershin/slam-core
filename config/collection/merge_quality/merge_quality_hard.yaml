@@ -1,4 +1,4 @@
-_target_: slam_eval.collections.text_generation.MergeQuality
+_target_: slam_core.collections.text_generation.MergeQuality
 name: merge_quality__merge_quality_hard
 jsonl_path: ${dataset_root}/merge_quality/merge_quality_dataset_hard.jsonl
 user_prompt_template: |

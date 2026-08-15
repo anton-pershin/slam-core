@@ -1,4 +1,4 @@
-_target_: slam_eval.model.EmbeddingBasedTextClassifier
+_target_: slam_core.model.EmbeddingBasedTextClassifier
 _recursive_: true
 name: e5_mlp_classifier
 embedding_model:

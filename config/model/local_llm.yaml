@@ -1,4 +1,4 @@
-_target_: slam_eval.model.LlmViaOpenAiApi
+_target_: slam_core.model.LlmViaOpenAiApi
 _recursive_: true
 name: local_llm
 llm:
