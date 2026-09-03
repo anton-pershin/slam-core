@@ -102,7 +102,7 @@ flowchart LR
 
 1. [x] Set up `slam-core` as an installable Python package with `pyproject.toml`
 2. [x] Extract shared abstractions from existing repos into `slam-core`
-3. [ ] Update existing repos (`slam-eval`, `slam-datagen`, `slam-monitoring`) to depend on `slam-core`
+3. [x] Update existing repos (`slam-eval`, `slam-datagen`, `slam-monitoring`) to depend on `slam-core`
 4. [ ] Extend `slam-core` with training support (mixins, loss functions, etc.)
 5. [ ] Create new component repos as needed (training, RL, etc.) with consistent structure
 6. [ ] Extend component repos as needed to cover new research use cases
