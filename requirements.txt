@@ -3,6 +3,9 @@ emoji
 hydra-core >= 1.3
 nltk
 syllapy
+torch
+transformers
+peft >= 0.20
 
 rally @ git+https://github.com/anton-pershin/rally.git
 kygs @ git+https://github.com/anton-pershin/kygs.git

@@ -1,0 +1,8 @@
+_target_: slam_core.model.LocalCausalLm
+_recursive_: false
+name: local_hf_causal_lm
+base_model_path: ${user_settings.model_root}/qwen3-0.6b
+adapter_path: null
+max_new_tokens: 1024
+do_sample: false
+temperature: 1.0

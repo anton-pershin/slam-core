@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from typing import Any
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
-from unittest.mock import Mock
 
 from slam_core.model import EmbeddingBasedTextClassifier
 
@@ -31,7 +31,10 @@ class TestEmbeddingBasedTextClassifier:
         labels = ["class_a", "class_b", "class_c"]
 
         mock_embedding_model = Mock()
-        mock_embedding_model.predict.side_effect = [fake_embeddings[0:1], fake_embeddings[1:2]]
+        mock_embedding_model.predict.side_effect = [
+            fake_embeddings[0:1],
+            fake_embeddings[1:2],
+        ]
 
         dummy_classifier = DummyClassifier(labels)
         dummy_classifier._predictions = [1, 2]

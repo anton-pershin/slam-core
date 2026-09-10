@@ -221,7 +221,7 @@ mocking the base class. Two are needed:
 | # | Test | Covers |
 |---|---|---|
 | T1 | Prompt of each built record equals `x["user_prompt"]` verbatim from the collection | FR1, FR2 |
-| T2 | Built records use the `prompt`/`completion` key pair expected by `trl` | FR2 |
+| T2 | Built records use the `prompt`/`completion` key pair expected by `trl`, in the conversational (message-list) format on both sides | FR2 |
 | T3 | `dict` `y_true` becomes `json.dumps(y_true, ensure_ascii=False, indent=2)` in `completion` | FR3, row 1 |
 | T4 | Round-trip: `json.loads` of a built `completion` equals the original `y_true` dict — i.e. `safe_parse_prediction` accepts what the model is trained to emit | FR3 |
 | T5 | `str` `y_true` is used verbatim, with no JSON quoting applied | FR3, row 2 |
@@ -346,8 +346,14 @@ and one dataclass rather than a class hierarchy (NFR1):
      iterator into a list (the collection is a one-shot iterator, so this is required).
    - `serialize_completion(y_true) -> str`: returns `y_true` unchanged if it is a `str`,
      otherwise `json.dumps(y_true, ensure_ascii=False, indent=2)` (FR3).
-   - `build_records(cases) -> list[dict]`: produces `{"prompt": ..., "completion": ...}` pairs,
-     carrying the system prompt only when present (FR2, FR4).
+   - `build_records(cases) -> list[dict]`: produces `trl` prompt-completion records in the
+     *conversational* format: `prompt` is a list of chat messages (a system message only when
+     present, then the user message) and `completion` is a single-element list with an
+     assistant message whose content is the serialized ground truth (FR2, FR4). Both sides
+     must be message lists — `trl >= 1.12` concatenates `prompt + completion` internally to
+     build the completion-only loss mask, which requires matching types, and a
+     chat-template-rendered prompt (identical to what `LocalCausalLm` produces at eval time,
+     preserving FR1's no-drift property) requires the completion to be conversational too.
    - `split_cases(cases, train_ratio, seed) -> tuple[list, list]`: validates the ratio is in
      `(0, 1]`, copies the list, shuffles it with `random.Random(seed)`, and slices at
      `floor(n * train_ratio)`; raises if the training subset would be empty (FR5).
@@ -398,30 +404,30 @@ and `base_model_path`.
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests (T1–T34) as specified in section 2, including the `FakeDictCollection` /
+1. [x] Write the tests (T1–T34) as specified in section 2, including the `FakeDictCollection` /
        `FakeStrCollection` doubles and the `slow` marker registration for T34
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] (slam-core) Add `torch`, `transformers`, `peft` to `pyproject.toml` and
+2. [x] Run all the tests and ensure that they fail
+3. [x] (slam-core) Add `torch`, `transformers`, `peft` to `pyproject.toml` and
        `requirements.txt`
-4. [ ] (slam-core) Implement `LocalCausalLm` in `slam_core/model.py`
-5. [ ] (slam-core) Add `config/model/local_hf_causal_lm.yaml`
-6. [ ] (slam-core) Run T24–T30 and T33 and ensure they pass
-7. [ ] (slam-train) Add dependencies: `slam-core`, `trl >= 1.12`, `peft >= 0.20`,
+4. [x] (slam-core) Implement `LocalCausalLm` in `slam_core/model.py`
+5. [x] (slam-core) Add `config/model/local_hf_causal_lm.yaml`
+6. [x] (slam-core) Run T24–T30 and T33 and ensure they pass
+7. [x] (slam-train) Add dependencies: `slam-core`, `trl >= 1.12`, `peft >= 0.20`,
        `transformers`, `torch`, `datasets`
-8. [ ] (slam-train) Implement `slam_train/data/sft_dataset.py`
-9. [ ] (slam-train) Implement `slam_train/data/holdout.py`
-10. [ ] (slam-train) Run T1–T23 and ensure they pass
-11. [ ] (slam-train) Add `config/lora/default.yaml`, `config/sft/default.yaml`, and
+8. [x] (slam-train) Implement `slam_train/data/sft_dataset.py`
+9. [x] (slam-train) Implement `slam_train/data/holdout.py`
+10. [x] (slam-train) Run T1–T23 and ensure they pass
+11. [x] (slam-train) Add `config/lora/default.yaml`, `config/sft/default.yaml`, and
         `config/config_train_sft.yaml` with the searchpath block copied from `slam-eval`
-12. [ ] (slam-train) Implement `slam_train/scripts/train_sft.py`
-13. [ ] (slam-train) Remove the scaffold placeholders `slam_train/scripts/main.py`,
+12. [x] (slam-train) Implement `slam_train/scripts/train_sft.py`
+13. [x] (slam-train) Remove the scaffold placeholders `slam_train/scripts/main.py`,
         `config/config_main.yaml`, and the empty `tests/test_main.py`
-14. [ ] (slam-train) Run T31–T32 and ensure they pass
-15. [ ] (slam-train) Run the T34 smoke test and ensure it passes
-16. [ ] Update `README.md` in both repos: `slam-train` gets a `train_sft.py` section
+14. [x] (slam-train) Run T31–T32 and ensure they pass
+15. [x] (slam-train) Run the T34 smoke test and ensure it passes
+16. [x] Update `README.md` in both repos: `slam-train` gets a `train_sft.py` section
         (configuration, outputs, and the follow-up `slam-eval` invocation against the generated
         holdout config); `slam-core` gets `LocalCausalLm` documented in `docs/models.md`
-17. [ ] Run `black`, `isort`, `pylint`, `mypy` on both repos and fix all findings
+17. [x] Run `black`, `isort`, `pylint`, `mypy` on both repos and fix all findings
 18. [ ] Manual verification items 1–3 from section 2.7 on GPU hardware
 
 #### 3.4 Modification summary

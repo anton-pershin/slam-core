@@ -79,3 +79,37 @@ The classifier must conform to `TextClassifierProtocol`:
 - `model_path: str` — path to the classifier model.
 - `labels: Sequence[str]` — list of possible label names.
 - `predict(text_embeddings) -> Sequence` — returns predicted class indices.
+
+---
+
+## `LocalCausalLm`
+
+A local HuggingFace causal LM (optionally wrapped with a LoRA adapter) that
+answers a `TextGenerationInput` by applying the tokenizer's chat template and
+generating a completion. Used to evaluate locally trained adapters with
+`slam-eval` via the shared config `config/model/local_hf_causal_lm.yaml`.
+
+```python
+from slam_core.model import LocalCausalLm
+from slam_core.collections.text_generation import TextGenerationInput
+
+model = LocalCausalLm(
+    name="local_hf_causal_lm",
+    base_model_path="/home/tony/models/qwen3-0.6b",
+    adapter_path="/path/to/trained/adapter",  # or None for the baseline
+    max_new_tokens=1024,
+    do_sample=False,  # greedy decoding by default - reproducible evaluation
+)
+
+case = TextGenerationInput(system_prompt=None, user_prompt="...")
+response = model.predict(case)
+```
+
+**How it works:**
+
+1. The base model is loaded with `AutoModelForCausalLM.from_pretrained`; if
+   `adapter_path` is set, it is wrapped with `peft.PeftModel.from_pretrained`.
+2. Messages (system only when present, then user) are rendered with the
+   tokenizer's chat template (`add_generation_prompt=True`).
+3. Generation runs with the configured parameters; greedy decoding by default.
+4. Only newly generated tokens are returned - the echoed prompt is stripped.

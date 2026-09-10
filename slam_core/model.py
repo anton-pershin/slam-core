@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Protocol, Sequence, runtime_checkable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
 
 from kygs.classifier import TextClassifier
 from rally.interaction import request_based_on_message_history
 from rally.llm import Llm
 
 from slam_core.collections.text_generation import TextGenerationInput
+
+if TYPE_CHECKING:  # pragma: no cover - imports are heavy, kept lazy at runtime
+    from peft import PeftModel
+    from transformers import PreTrainedTokenizerBase
 
 
 class TextClassifierProtocol(Protocol):
@@ -103,3 +107,80 @@ class EmbeddingBasedTextClassifier(Model):
             ) from err
 
         return str(label)
+
+
+class LocalCausalLm(Model):
+    """Local HuggingFace causal LM, optionally wrapped with a LoRA adapter.
+
+    Heavy libraries (``torch``, ``transformers``, ``peft``) are imported lazily
+    inside ``__init__`` so that importing this module stays cheap.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        base_model_path: str,
+        adapter_path: Optional[str] = None,
+        max_new_tokens: int = 256,
+        do_sample: bool = False,
+        temperature: float = 1.0,
+        device: Optional[str] = None,
+    ) -> None:
+        super().__init__(name)
+        import torch
+        from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        model: Any
+
+        self.base_model_path = base_model_path
+        self.adapter_path = adapter_path
+        self.max_new_tokens = max_new_tokens
+        self.do_sample = do_sample
+        self.temperature = temperature
+        self.device = device
+
+        torch_dtype = torch.float32 if device in (None, "cpu") else torch.float16
+        base_model = AutoModelForCausalLM.from_pretrained(
+            base_model_path,
+            torch_dtype=torch_dtype,
+        )
+        if adapter_path is None:
+            model = base_model
+        else:
+            model = PeftModel.from_pretrained(base_model, adapter_path)
+        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
+            base_model_path
+        )
+        model.to(device if device is not None else "cpu")
+        model.eval()
+        self.model = model
+        self.tokenizer = tokenizer
+
+    def predict(self, x: TextGenerationInput) -> str:
+        import torch
+
+        messages: list[dict[str, str]] = []
+        if x["system_prompt"] is not None:
+            messages.append({"role": "system", "content": x["system_prompt"]})
+        messages.append({"role": "user", "content": x["user_prompt"]})
+
+        prompt_text = self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = self.tokenizer(prompt_text, return_tensors="pt").to(self.model.device)
+        prompt_length = inputs["input_ids"].shape[1]
+
+        with torch.no_grad():
+            output_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=self.do_sample,
+                temperature=self.temperature if self.do_sample else None,
+            )
+
+        generated_ids = output_ids[0][prompt_length:]
+        completion = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        return completion if isinstance(completion, str) else completion[0]
