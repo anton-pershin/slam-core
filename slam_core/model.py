@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
 
@@ -125,6 +126,7 @@ class LocalCausalLm(Model):
         do_sample: bool = False,
         temperature: float = 1.0,
         device: Optional[str] = None,
+        enable_thinking: Optional[bool] = None,
     ) -> None:
         super().__init__(name)
         import torch
@@ -139,6 +141,7 @@ class LocalCausalLm(Model):
         self.do_sample = do_sample
         self.temperature = temperature
         self.device = device
+        self.enable_thinking = enable_thinking
 
         torch_dtype = torch.float32 if device in (None, "cpu") else torch.float16
         base_model = AutoModelForCausalLM.from_pretrained(
@@ -165,11 +168,18 @@ class LocalCausalLm(Model):
             messages.append({"role": "system", "content": x["system_prompt"]})
         messages.append({"role": "user", "content": x["user_prompt"]})
 
-        prompt_text = self.tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True,
+        chat_template_kwargs = (
+            {"enable_thinking": self.enable_thinking}
+            if self.enable_thinking is not None
+            else None
         )
+        template_args: dict[str, Any] = {
+            "tokenize": False,
+            "add_generation_prompt": True,
+        }
+        if chat_template_kwargs is not None:
+            template_args["chat_template_kwargs"] = chat_template_kwargs
+        prompt_text = self.tokenizer.apply_chat_template(messages, **template_args)
         inputs = self.tokenizer(prompt_text, return_tensors="pt").to(self.model.device)
         prompt_length = inputs["input_ids"].shape[1]
 
@@ -183,4 +193,8 @@ class LocalCausalLm(Model):
 
         generated_ids = output_ids[0][prompt_length:]
         completion = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
+        if self.enable_thinking is False:
+            completion = re.sub(
+                r"<think>.*?</think>\s*", "", completion, flags=re.DOTALL
+            ).strip()
         return completion if isinstance(completion, str) else completion[0]

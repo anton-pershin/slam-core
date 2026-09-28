@@ -106,6 +106,90 @@ class TestLocalCausalLm:
         result = model.predict(x)
         assert isinstance(result, str)
 
+    @pytest.mark.parametrize("enable_thinking", [False, True])
+    def test_thinking_setting_passed_to_chat_template(
+        self, tiny_model_dir, enable_thinking, monkeypatch
+    ):
+        model = LocalCausalLm(
+            name="tiny",
+            base_model_path=tiny_model_dir,
+            max_new_tokens=1,
+            enable_thinking=enable_thinking,
+        )
+        calls = []
+        original = model.tokenizer.apply_chat_template
+
+        def record(messages, **kwargs):
+            calls.append(kwargs)
+            return original(messages, **kwargs)
+
+        monkeypatch.setattr(model.tokenizer, "apply_chat_template", record)
+        model.predict(TextGenerationInput(system_prompt=None, user_prompt="hello"))
+
+        assert calls[0]["chat_template_kwargs"] == {"enable_thinking": enable_thinking}
+
+    def test_unset_thinking_setting_not_passed_to_chat_template(
+        self, tiny_model_dir, monkeypatch
+    ):
+        model = LocalCausalLm(
+            name="tiny", base_model_path=tiny_model_dir, max_new_tokens=1
+        )
+        calls = []
+        original = model.tokenizer.apply_chat_template
+
+        def record(messages, **kwargs):
+            calls.append(kwargs)
+            return original(messages, **kwargs)
+
+        monkeypatch.setattr(model.tokenizer, "apply_chat_template", record)
+        model.predict(TextGenerationInput(system_prompt=None, user_prompt="hello"))
+
+        assert "chat_template_kwargs" not in calls[0]
+
+    @pytest.mark.parametrize("enable_thinking", [False, True, None])
+    def test_thinking_markup_cleanup_modes(
+        self, tiny_model_dir, enable_thinking, monkeypatch
+    ):
+        import torch
+
+        model = LocalCausalLm(
+            name="tiny",
+            base_model_path=tiny_model_dir,
+            max_new_tokens=1,
+            enable_thinking=enable_thinking,
+        )
+        original_template = model.tokenizer.apply_chat_template
+        prompt_text = original_template(
+            [{"role": "user", "content": "hello"}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        prompt_length = len(model.tokenizer(prompt_text)["input_ids"])
+        monkeypatch.setattr(
+            model.model,
+            "generate",
+            lambda **kwargs: torch.tensor(
+                [model.tokenizer(prompt_text)["input_ids"] + [3]]
+            ),
+        )
+        monkeypatch.setattr(
+            model.tokenizer,
+            "decode",
+            lambda generated_ids, skip_special_tokens: (
+                '<think>\n\n</think>\n\n{"name": "Alice"}'
+            ),
+        )
+
+        result = model.predict(
+            TextGenerationInput(system_prompt=None, user_prompt="hello")
+        )
+
+        if enable_thinking is False:
+            assert result == '{"name": "Alice"}'
+        else:
+            assert result == '<think>\n\n</think>\n\n{"name": "Alice"}'
+        assert prompt_length > 0
+
     def test_output_does_not_contain_prompt(self, tiny_model_dir):
         # The returned string must be exactly the decode of the tokens
         # generated beyond the prompt - i.e. the echoed prompt is stripped by

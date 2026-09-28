@@ -6,3 +6,4 @@ adapter_path: null
 max_new_tokens: 1024
 do_sample: false
 temperature: 1.0
+enable_thinking: false
