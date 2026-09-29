@@ -308,5 +308,30 @@ class TestStepCallback:
         )
         prediction = model.predict(x)
         assert isinstance(prediction, str)
-        assert len(calls) >= 1  # tiny model generates at most 4 tokens
         assert all(isinstance(t, int) for t in calls)
+
+        # AC3(b): exactly generated_tokens invocations. Decode the completion
+        # to obtain the true generated-token count (decode is the same path
+        # predict() uses, so EOS/padding handling matches).
+        prompt_text = model.tokenizer.apply_chat_template(
+            [{"role": "user", "content": "hello world"}],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = model.tokenizer(prompt_text, return_tensors="pt")
+        import torch
+
+        with torch.no_grad():
+            output_ids = model.model.generate(
+                **inputs, max_new_tokens=4, do_sample=False
+            )
+        prompt_len = inputs["input_ids"].shape[1]
+        generated_tokens = len(output_ids[0]) - prompt_len
+        assert generated_tokens >= 1
+        assert len(calls) == generated_tokens
+
+        # AC3(b): final prediction unchanged with the callback set
+        model_plain = LocalCausalLm(
+            name="tiny", base_model_path=tiny_model_dir, max_new_tokens=4
+        )
+        assert model_plain.predict(x) == prediction
