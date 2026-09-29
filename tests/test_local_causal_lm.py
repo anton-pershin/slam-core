@@ -281,3 +281,32 @@ class TestLocalCausalLm:
         assert "be nice" not in text_without
         assert "hi" in text_with
         assert "hi" in text_without
+
+
+class TestStepCallback:
+    def test_no_callback_unchanged(self, tiny_model_dir):
+        x = TextGenerationInput(system_prompt=None, user_prompt="hello world")
+        model_plain = LocalCausalLm(
+            name="tiny", base_model_path=tiny_model_dir, max_new_tokens=4
+        )
+        model_none = LocalCausalLm(
+            name="tiny",
+            base_model_path=tiny_model_dir,
+            max_new_tokens=4,
+            step_callback=None,
+        )
+        assert model_plain.predict(x) == model_none.predict(x)
+
+    def test_callback_invoked_per_step(self, tiny_model_dir):
+        x = TextGenerationInput(system_prompt=None, user_prompt="hello world")
+        calls = []
+        model = LocalCausalLm(
+            name="tiny",
+            base_model_path=tiny_model_dir,
+            max_new_tokens=4,
+            step_callback=calls.append,
+        )
+        prediction = model.predict(x)
+        assert isinstance(prediction, str)
+        assert len(calls) >= 1  # tiny model generates at most 4 tokens
+        assert all(isinstance(t, int) for t in calls)
