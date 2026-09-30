@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
 
 from kygs.classifier import TextClassifier
@@ -127,6 +128,7 @@ class LocalCausalLm(Model):
         temperature: float = 1.0,
         device: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
+        step_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
         super().__init__(name)
         import torch
@@ -142,6 +144,7 @@ class LocalCausalLm(Model):
         self.temperature = temperature
         self.device = device
         self.enable_thinking = enable_thinking
+        self.step_callback = step_callback
 
         torch_dtype = torch.float32 if device in (None, "cpu") else torch.float16
         base_model = AutoModelForCausalLM.from_pretrained(
@@ -184,12 +187,37 @@ class LocalCausalLm(Model):
         prompt_length = inputs["input_ids"].shape[1]
 
         with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=self.do_sample,
-                temperature=self.temperature if self.do_sample else None,
-            )
+            generate_kwargs: dict[str, Any] = {
+                "max_new_tokens": self.max_new_tokens,
+                "do_sample": self.do_sample,
+                "temperature": self.temperature if self.do_sample else None,
+            }
+            if self.step_callback is not None:
+                from transformers.generation import BaseStreamer
+
+                class _CallbackStreamer(BaseStreamer):
+                    """Forwards each decoding step to the user callback.
+
+                    `put()` first receives the full prompt tensor (prefill echo),
+                    then one tensor per generated token; only the latter are
+                    forwarded, so the callback fires once per generated token.
+                    """
+
+                    def __init__(self, callback: Callable[[int], None]) -> None:
+                        self._callback = callback
+                        self._prompt_seen = False
+
+                    def put(self, value: Any) -> None:
+                        if self._prompt_seen:
+                            self._callback(int(value.reshape(-1)[-1]))
+                        else:
+                            self._prompt_seen = True
+
+                    def end(self) -> None:
+                        pass
+
+                generate_kwargs["streamer"] = _CallbackStreamer(self.step_callback)
+            output_ids = self.model.generate(**inputs, **generate_kwargs)
 
         generated_ids = output_ids[0][prompt_length:]
         completion = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
