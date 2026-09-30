@@ -1,2 +1,2 @@
-model_root: /path/to/models
-dataset_root: /path/to/datasets
+model_root: ${oc.env:SLAM_CORE_MODEL_PATH, null}
+dataset_root: ${oc.env:SLAM_CORE_DATASET_PATH, null}
