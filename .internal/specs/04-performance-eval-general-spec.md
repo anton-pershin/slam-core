@@ -137,17 +137,17 @@ Data flow: the existing eval loop invokes the monitor's hooks at phase boundarie
 
 #### 6.1 Todo list
 
-1. **slam-core: `LocalCausalLm` step callback (FR4).** Add optional constructor argument `step_callback: Optional[Callable] = None`; invoke it once per generated decoding step inside `generate()`. Verify unset ⇒ identical behavior. Unit test with the tiny-model helper (AC3).
-2. **slam-eval: performance package skeleton.** Create `slam_eval/performance/` with `monitor.py`, `collectors.py`, `sampler.py`, `stats.py`, `storage.py`; Hydra config group `config/performance_monitor/` with a disabled-by-default default.
-3. **Stats registry (FR8).** Implement name → function registry (`min`, `max`, `mean`, `median`, parameterized `qN`); unit tests against independently computed values (part of AC7).
-4. **`LatencyCollector` + monitor lifecycle hooks (FR1, FR2).** Wire lifecycle hook calls into the eval loop (`main.py`); per-case e2e records joined by `case_id`; disabled monitor ⇒ unchanged loop (AC1, AC2).
-5. **`TokenTimingCollector` — in-process backend (FR3, FR4).** Consume step-callback events + prompt length; TTFT/TPOT per FR3 formulas with null semantics (AC4).
-6. **`TokenTimingCollector` — OpenAI-compatible backend (FR5).** Streaming chat-completion client with first-chunk TTFT, usage-preferred token counts, chunk-count fallback; `streaming` metadata block, `n: 0` aggregates, fallback warnings (AC5).
-7. **`MemorySampler` (FR6, FR7).** Daemon thread with configurable interval; pynvml per-PID VRAM + psutil RSS; phase-tagged samples; graceful degradation to nulls + warnings (AC6, AC9).
-8. **Aggregation + warmup (FR9).** Non-null aggregation with `n`, warmup exclusion from aggregates with raw retention, run-level memory aggregation over `predict`-phase samples (AC7).
-9. **`PerformanceStorageAdapter` + local implementation (FR10).** Narrow protocol, `raw.jsonl` + `aggregated.json` under run-keyed path; wire into `on_run_end` (AC8).
-10. **Full test pass (AC1–AC9).** Run the slam venv test suite; fix; ensure linters pass.
-11. **Manual validations (AC10, AC11).** GPU smoke on the GPU host (LocalCausalLm + local vLLM); real-API validation via Caila with glm5.3-flash (not committed as a test); record outcomes in the implementation summary.
+1. [x] **slam-core: `LocalCausalLm` step callback (FR4).** Add optional constructor argument `step_callback: Optional[Callable] = None`; invoke it once per generated decoding step inside `generate()`. Verify unset ⇒ identical behavior. Unit test with the tiny-model helper (AC3).
+1. [x] **slam-eval: performance package skeleton.** Create `slam_eval/performance/` with `monitor.py`, `collectors.py`, `sampler.py`, `stats.py`, `storage.py`; Hydra config group `config/performance_monitor/` with a disabled-by-default default.
+1. [x] **Stats registry (FR8).** Implement name → function registry (`min`, `max`, `mean`, `median`, parameterized `qN`); unit tests against independently computed values (part of AC7).
+1. [x] **`LatencyCollector` + monitor lifecycle hooks (FR1, FR2).** Wire lifecycle hook calls into the eval loop (`main.py`); per-case e2e records joined by `case_id`; disabled monitor ⇒ unchanged loop (AC1, AC2).
+1. [x] **`TokenTimingCollector` — in-process backend (FR3, FR4).** Consume step-callback events + prompt length; TTFT/TPOT per FR3 formulas with null semantics (AC4).
+1. [x] **`TokenTimingCollector` — OpenAI-compatible backend (FR5).** Streaming chat-completion client with first-chunk TTFT, usage-preferred token counts, chunk-count fallback; `streaming` metadata block, `n: 0` aggregates, fallback warnings (AC5).
+1. [x] **`MemorySampler` (FR6, FR7).** Daemon thread with configurable interval; pynvml per-PID VRAM + psutil RSS; phase-tagged samples; graceful degradation to nulls + warnings (AC6, AC9).
+1. [x] **Aggregation + warmup (FR9).** Non-null aggregation with `n`, warmup exclusion from aggregates with raw retention, run-level memory aggregation over `predict`-phase samples (AC7).
+1. [x] **`PerformanceStorageAdapter` + local implementation (FR10).** Narrow protocol, `raw.jsonl` + `aggregated.json` under run-keyed path; wire into `on_run_end` (AC8).
+1. [x] **Full test pass (AC1–AC9).** Run the slam venv test suite; fix; ensure linters pass.
+1. [x] **Manual validations (AC10, AC11).** GPU smoke on the GPU host (LocalCausalLm + local vLLM); real-API validation via Caila with glm5.3-flash (not committed as a test); record outcomes in the implementation summary.
 
 #### 6.2 Modification summary
 
@@ -157,7 +157,8 @@ Data flow: the existing eval loop invokes the monitor's hooks at phase boundarie
 | `slam-core/tests/test_local_causal_lm.py` | Modified: add callback tests (invocation count, order, unchanged predictions) |
 | `slam-eval/slam_eval/performance/__init__.py` | New: performance package |
 | `slam-eval/slam_eval/performance/monitor.py` | New: `PerformanceMonitor` (lifecycle hooks, phase state, warmup exclusion, aggregation trigger) |
-| `slam-eval/slam_eval/performance/collectors.py` | New: `LatencyCollector`, `TokenTimingCollector` (in-process + OpenAI backends) |
+| `slam-eval/slam_eval/performance/monitor.py` | Modified (same file as above): `TokenTimingState`, in-process TTFT/TPOT computation, `note_openai_result` |
+| `slam-eval/slam_eval/performance/openai_collector.py` | New: `OpenAiStreamingCollector` — streaming/non-streaming OpenAI-compatible client, TTFT/TPOT, usage-preferred token counts, streaming metadata (spec evolved from the planned `collectors.py` during implementation) |
 | `slam-eval/slam_eval/performance/sampler.py` | New: `MemorySampler` thread (pynvml/psutil, phase tagging) |
 | `slam-eval/slam_eval/performance/stats.py` | New: stats registry with parameterized quantiles |
 | `slam-eval/slam_eval/performance/storage.py` | New: `PerformanceStorageAdapter` protocol + `LocalPerformanceStorageAdapter` |
