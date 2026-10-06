@@ -7,4 +7,5 @@ llm:
   model_family: qwen2.5
   max_concurrent_requests: 16
   max_output_tokens: 1024
+  enable_thinking: false
 
