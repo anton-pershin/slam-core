@@ -57,7 +57,33 @@ What is missing: `slam_core.model.LlmViaOpenAiApi` still builds its request by c
 
 ### 2. Tests
 
-[List all the tests explicitly covering all the requirements and the expected variants mentioned in the requirement analysis. Tag them as T1, T2 etc.]
+All tests below are new or rewritten unless marked unchanged. "Row" refers to the §1.4 variant table.
+
+| # | Test | File | Covers |
+|---|------|------|--------|
+| T1 | `test_init` — name and `Llm` object are stored (unchanged) | `slam-core/tests/test_model.py` | FR1 |
+| T2 | `test_predict_passes_system_and_user_messages` — `llm.request` is called once with `[{"role": "system", ...}, {"role": "user", ...}]` | same | row 1, NFR2 |
+| T3 | `test_predict_passes_user_message_only` — called with `[{"role": "user", ...}]` | same | row 2, NFR2 |
+| T4 | `test_predict_returns_llm_content` — the returned message's `content` is what `predict` returns | same | row 3 |
+| T5 | `test_predict_raises_when_llm_returns_none` — raises and the message names the model | same | row 4, FR5 |
+| T6 | `test_predict_passes_no_generation_parameters` — exactly one call; `call_args.args == (messages,)` and `call_args.kwargs == {}` | same | rows 5, 7, 11; FR1, FR3 |
+| T7 | `test_predict_issues_one_request_per_call` — two predicts with different inputs issue two calls, in order | same | row 11 |
+| T8 | `test_predict_returns_reasoning_trace_verbatim` — content containing `<think>...</think>` is returned unchanged | same | row 8 |
+| T9 | `test_module_surface_has_no_removed_request_functions` — `slam_core.model` exposes neither `request_based_on_message_history` nor `request_based_on_prompts`, and imports only `Llm` from rally | same | row 9, FR2, NFR1 |
+| T10 | `test_predict_sends_thinking_key_through_llm` — a real `Llm` (url, model, `max_output_tokens`) with `requests.post` stubbed: `enable_thinking` True and False put `chat_template_kwargs == {"enable_thinking": <value>}` in the body; unset leaves the key absent and the remaining body keys identical | same | rows 5, 6; NFR6 |
+| T11 | `test_main_with_simple_scorer` — request stubbed at `rally.llm.Llm.request` (was the `slam_core.model` module symbol); expected stored results unchanged | `slam-eval/tests/e2e/test_main.py` | row 10 |
+| T12 | `test_main_with_complex_scorer` — same re-point | same | row 10 |
+| T13 | `slam-eval/tests/test_performance_monitor.py` and slam-core's remaining suites (`test_collection`, `test_config`, `test_embedding_classifier`, `test_local_causal_lm`, `test_scorer`, `test_storage_adapter`) pass unchanged | `slam-core`, `slam-eval` | row 12, FR7 |
+
+Verification commands, run with the project interpreter `~/venvs/slam/bin/python`:
+
+```
+python -c "import slam_core.model"          # row 9
+cd slam-core && python -m pytest -q          # baseline: 5 collection errors -> all pass
+cd slam-eval && python -m pytest -q          # baseline: 1 collection error -> all pass
+```
+
+NFR6 payload probe: capture the request body with the same stubbed transport on the untouched revision (a worktree of `main`) and on the change; the diff must be the thinking key and nothing else. This is run at implementation time, not asserted from the test alone.
 
 ### 3. Implementation plan
 
