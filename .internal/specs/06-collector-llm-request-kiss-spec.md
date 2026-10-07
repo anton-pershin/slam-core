@@ -99,25 +99,46 @@ NFR5 wire probe: capture the collector's body with a stubbed transport on the pr
 
 #### 3.1 Implementation repos
 
-[List all the repos expected to be involved in any implementation]
+- **slam-core** (management repo) — the shared message builder in the model module, and its tests.
+- **slam-eval** — the collector (constructor, headers and body from the `Llm`), the eval-loop wiring, and the tests.
 
 #### 3.2 High-level design
 
-[Mermaid diagram (typically, flowchart, but it is ultimately up to a planner) describing the high-level design. Take the high-level design from the constitution/validation spec and draw how your proposal fits into it.]
+```mermaid
+flowchart LR
+    A[EvalCaseCollection] --> B[slam-eval: eval loop]
+    B -->|shared message builder| M[slam-core: build_messages]
+    B -->|monitoring off| C[slam-core: Model.predict]
+    B -->|monitoring on| F[slam-eval: streaming collector]
+    C -->|request| D[rally: Llm]
+    F -->|headers and body| D
+    F -->|stream and stream_options| D
+    D -->|assistant message| C
+    D -->|stream chunks| F
+    B --> E[EvalStorageAdapter]
+    B --> P[performance storage]
+```
 
 #### 3.3 Todo list
 
-[Write a todo list with all the steps necessary to create an implementation which will allow the tests to be passed. Below is the template where the first two steps are mandatory]
-
 1. [ ] Write the tests
 2. [ ] Run all the tests and ensure that they fail
-3. [ ] ...
+3. [ ] slam-core: add the shared message builder and use it in `predict` (T1–T3)
+4. [ ] slam-eval: the collector takes the `Llm`, obtains headers and body from it, layers only the streaming keys, and drops the per-call cap argument (T4–T12, T15, T16)
+5. [ ] slam-eval: the eval loop uses the shared builder, the collector is built from the model's `Llm`, and the cap guard is gone (T13)
+6. [ ] Run both suites
+7. [ ] Run the NFR5 wire probe against a pre-change worktree
+8. [ ] Run the linters and compare with the pre-change revision
+9. [ ] Commit
 
 #### 3.4 Modification summary
 
-[Fill the table below specifying which files are going to be modified and which are going to be created]
-
-| File | Action |
-|------|--------|
-| ... | Modified: add X, modify Y, etc. |
-| ... | New |
+| File | Repo | Action |
+|------|------|--------|
+| `slam_core/model.py` | slam-core | Modified: add the shared message builder, use it in `predict` |
+| `tests/test_model.py` | slam-core | Modified: T1–T3 |
+| `slam_eval/performance/openai_collector.py` | slam-eval | Modified: constructor takes the `Llm`; headers and body from `build_headers()`/`build_payload()`; streaming keys layered; per-call cap argument dropped |
+| `slam_eval/scripts/main.py` | slam-eval | Modified: shared message builder, collector from the model's `Llm`, cap guard removed |
+| `tests/test_performance_monitor.py` | slam-eval | Modified: T4–T12, T14–T16 |
+| `tests/e2e/test_main.py` | slam-eval | Modified: T13 |
+| `.internal/specs/06-collector-llm-request-kiss-spec.md` | slam-core | New |
