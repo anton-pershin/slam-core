@@ -6,7 +6,6 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
 
 from kygs.classifier import TextClassifier
-from rally.interaction import request_based_on_message_history
 from rally.llm import Llm
 
 from slam_core.collections.text_generation import TextGenerationInput
@@ -59,13 +58,12 @@ class LlmViaOpenAiApi(Model):
             }
         )
 
-        resp_message = request_based_on_message_history(
-            llm_server_url=self.llm.url,
-            message_history=messages,
-            authorization=self.llm.authorization,
-            model=self.llm.model,
-            max_output_tokens=self.llm.max_output_tokens,
-        )
+        resp_message = self.llm.request(messages)
+
+        if resp_message is None:
+            raise ValueError(
+                f"Model '{self.name}' received no valid response from the LLM."
+            )
 
         return resp_message["content"]
 

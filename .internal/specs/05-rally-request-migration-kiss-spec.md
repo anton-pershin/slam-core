@@ -111,14 +111,14 @@ flowchart LR
 
 #### 3.3 Todo list
 
-1. [ ] Write the tests
-2. [ ] Run all the tests and ensure that they fail
-3. [ ] Replace the module-level request call in `slam_core/model.py` with `self.llm.request(messages)`, drop the `rally.interaction` import, and raise an error naming the model when the response is `None`
-4. [ ] Run slam-core's suite and the import check
-5. [ ] Re-point both slam-eval end-to-end stubs to `rally.llm.Llm.request` and run slam-eval's suite
-6. [ ] Run the payload probe against a `main` worktree and record the diff
-7. [ ] Run the linters on the changed files and compare with `main`
-8. [ ] Commit
+1. [x] Write the tests
+2. [x] Run all the tests and ensure that they fail
+3. [x] Replace the module-level request call in `slam_core/model.py` with `self.llm.request(messages)`, drop the `rally.interaction` import, and raise an error naming the model when the response is `None`
+4. [x] Run slam-core's suite and the import check
+5. [x] Re-point both slam-eval end-to-end stubs to `rally.llm.Llm.request` and run slam-eval's suite
+6. [x] Run the payload probe against a `main` worktree and record the diff
+7. [x] Run the linters on the changed files and compare with `main`
+8. [x] Commit
 
 #### 3.4 Modification summary
 
