@@ -8,6 +8,8 @@ The ecosystem requirement is that one place decides what an LLM request is (cons
 
 What is missing: with performance monitoring enabled, slam-eval's streaming collector performs the prediction itself and builds that request from scratch — its own endpoint, its own headers, its own field list, and its own copy of the message assembly. Two consequences follow. Generation behaviour configured on the `Llm` never reaches the measured request, so the output-token cap and thinking control are dead configuration while monitoring is on and the two paths disagree about the same config. And the request the eval measures is only assumed to be the request `predict` would make, because nothing compares them.
 
+The same requirement applies on the response side. How a reasoning trace is removed from a completion depends on the model family, and rally owns that rule (`THINKING_REMOVERS`). slam-core's local in-process model instead implements one hard-coded removal of its own, coupled to the thinking flag: it cannot express per-family strategies, and what it removes is not the ecosystem's rule.
+
 #### 1.2 Functional requirements
 
 **FR1.** The collector obtains the endpoint, the headers and the body from the `Llm` it is given — `build_headers()` and `build_payload(messages)` — and holds no url, authorization or model field of its own.
@@ -26,6 +28,12 @@ What is missing: with performance monitoring enabled, slam-eval's streaming coll
 
 **FR8.** Tests assert the collector's request against the `Llm`'s own builder output — equivalence, headers, the thinking key, both cap keys — and the existing measurement, fallback, authorization and streaming-disabled behaviour stays green on the new constructor.
 
+**FR9.** `LocalCausalLm` takes its reasoning-trace removal strategy from rally's family registry — `THINKING_REMOVERS[model_family]` — and keeps no removal rule of its own: no regular expression, no tag parsing.
+
+**FR10.** `LocalCausalLm` declares its model family as a constructor argument set from config, and whether the strategy is applied is controlled by a dedicated boolean config flag, independent of `enable_thinking` — the chat-template flag and the post-processing flag are separate knobs and any combination is allowed.
+
+**FR11.** An unknown or missing family is rally's lookup failing; slam-core adds no validation, default or fallback of its own.
+
 #### 1.3 Non-functional requirements
 
 **NFR1.** rally remains the only place that knows the OpenAI request shape; slam-eval knows only the two streaming keys.
@@ -40,7 +48,9 @@ What is missing: with performance monitoring enabled, slam-eval's streaming coll
 
 **NFR6.** The consequences of the thinking flag now applying are accepted and documented: the streamed content may carry the reasoning trace, which becomes `y_pred` and therefore the score; TTFT and `generated_tokens` include the reasoning while the flag is on, so thinking-on and thinking-off runs are not comparable; and with the flag on and a cap below the reasoning budget the collector reports streaming unavailability instead of an error. No removal of the trace happens here — slam-core strips it only on the in-process path, and rally's opt-in removal helper is not implemented.
 
-**NFR7.** Scope: the in-process `LocalCausalLm` path, the memory sampler, the statistics registry and the storage adapter are untouched, and rally itself is not modified.
+**NFR7.** Scope: the memory sampler, the statistics registry and the storage adapter are untouched, and rally itself is not modified. Both the streaming collector (request construction) and the local in-process model (response post-processing) are in scope.
+
+**NFR8.** The behaviour changes of adopting rally's strategies are recorded, not hidden: with the flag on and family `qwen3` the completion becomes what rally's entry returns (as the registry stands, the last line), where today the block is stripped and the whole remaining text is kept; with family `qwen2.5` nothing is removed, where today the block is stripped; and with the flag off nothing is removed regardless of `enable_thinking`, where today thinking-disabled implies removal.
 
 #### 1.4 Expected behavioural variants
 
@@ -62,6 +72,14 @@ What is missing: with performance monitoring enabled, slam-eval's streaming coll
 | 14 | server reports no usage | token counts from chunk counting, `tokens_source: chunk_count`, usage warning (unchanged) |
 | 15 | thinking on with a cap below the reasoning budget | no content chunks arrive; streaming unavailability is reported, not an error (accepted consequence) |
 | 16 | thinking on and the content carries a reasoning trace | the trace reaches `y_pred` and the score follows it (accepted consequence) |
+| 17 | removal flag on, family `qwen3`, trace present | rally's `qwen3` strategy is applied to the completion |
+| 18 | removal flag on, family `qwq` | rally's `qwq` strategy is applied |
+| 19 | removal flag on, family `qwen2.5` | nothing is removed: rally's entry is the identity function |
+| 20 | removal flag off, trace present | the completion is returned verbatim, no trimming, no whitespace handling |
+| 21 | removal flag on and `enable_thinking` true | the strategy is applied anyway — the two knobs are independent |
+| 22 | family absent from rally's registry | rally's lookup raises; slam-core neither catches it nor falls back |
+| 23 | `enable_thinking` set or unset | still passed to the chat template exactly as today |
+| 24 | step callback configured | per-token callback behaviour unchanged |
 
 ### 2. Tests
 
@@ -85,6 +103,12 @@ All tests below are new or re-pointed; "row" refers to the §1.4 variant table.
 | T14 | `test_disabled_in_config_reflected_at_construction` (unchanged) | `slam-eval/tests/test_performance_monitor.py` | config-intended fallback |
 | T15 | thinking on, no content chunks → streaming unavailability reported, not an error | same | row 15 |
 | T16 | thinking on, the content carries a reasoning trace → the trace is returned verbatim (no stripping in the collector) | same | row 16 |
+| T17 | `test_removal_strategy_comes_from_rally_registry` — with a recording entry in place, the completion is passed to `THINKING_REMOVERS[family]` and its return value is what `predict` returns | `slam-core/tests/test_local_causal_lm.py` | rows 17, 18, 19 |
+| T18 | `test_remove_thinking_flag_off_returns_completion_verbatim` — trace present, flag off → unchanged text | same | row 20 |
+| T19 | `test_remove_thinking_and_enable_thinking_are_independent` — flag on with thinking enabled still trims; flag off with thinking disabled does not | same | row 21 |
+| T20 | `test_unknown_family_is_not_handled_by_slam_core` — a family outside the registry raises from rally's lookup | same | row 22 |
+| T21 | existing chat-template tests kept: `enable_thinking` set and unset still reach the template | same | row 23 |
+| T22 | existing step-callback tests unchanged | same | row 24 |
 
 Verification, run with the project interpreter `~/venvs/slam/bin/python` and `SLAM_SHARED_CONFIG_PATH` exported (slam-eval's Hydra composition needs it):
 
@@ -99,7 +123,7 @@ NFR5 wire probe: capture the collector's body with a stubbed transport on the pr
 
 #### 3.1 Implementation repos
 
-- **slam-core** (management repo) — the shared message builder in the model module, and its tests.
+- **slam-core** (management repo) — the shared message builder, the local model's thinking-removal change, the model config, and their tests.
 - **slam-eval** — the collector (constructor, headers and body from the `Llm`), the eval-loop wiring, and the tests.
 
 #### 3.2 High-level design
@@ -126,17 +150,20 @@ flowchart LR
 3. [ ] slam-core: add the shared message builder and use it in `predict` (T1–T3)
 4. [ ] slam-eval: the collector takes the `Llm`, obtains headers and body from it, layers only the streaming keys, and drops the per-call cap argument (T4–T12, T15, T16)
 5. [ ] slam-eval: the eval loop uses the shared builder, the collector is built from the model's `Llm`, and the cap guard is gone (T13)
-6. [ ] Run both suites
-7. [ ] Run the NFR5 wire probe against a pre-change worktree
-8. [ ] Run the linters and compare with the pre-change revision
-9. [ ] Commit
+6. [ ] slam-core: `LocalCausalLm` takes `model_family` and `remove_thinking`, removes its own regex, and trims through rally's registry; add both keys to the local model config (T17–T22)
+7. [ ] Run both suites
+8. [ ] Run the NFR5 wire probe against a pre-change worktree
+9. [ ] Run the linters and compare with the pre-change revision
+10. [ ] Commit
 
 #### 3.4 Modification summary
 
 | File | Repo | Action |
 |------|------|--------|
-| `slam_core/model.py` | slam-core | Modified: add the shared message builder, use it in `predict` |
+| `slam_core/model.py` | slam-core | Modified: add the shared message builder and use it in `predict`; `LocalCausalLm` gains `model_family` and `remove_thinking` and trims through rally's registry instead of its own regex |
+| `config/model/local_hf_causal_lm.yaml` | slam-core | Modified: `remove_thinking: true`, `model_family: qwen3` |
 | `tests/test_model.py` | slam-core | Modified: T1–T3 |
+| `tests/test_local_causal_lm.py` | slam-core | Modified: T17–T22 |
 | `slam_eval/performance/openai_collector.py` | slam-eval | Modified: constructor takes the `Llm`; headers and body from `build_headers()`/`build_payload()`; streaming keys layered; per-call cap argument dropped |
 | `slam_eval/scripts/main.py` | slam-eval | Modified: shared message builder, collector from the model's `Llm`, cap guard removed |
 | `tests/test_performance_monitor.py` | slam-eval | Modified: T4–T12, T14–T16 |
