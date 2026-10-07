@@ -24,19 +24,19 @@ The same requirement applies on the response side. How a reasoning trace is remo
 
 **FR6.** The eval loop passes no request-shaping parameter to the collector and no longer aborts when no cap is configured — the cap is whatever the `Llm` carries, and an unset cap simply means no cap key goes out.
 
-**FR7.** Measurement semantics are unchanged: TTFT from the first content chunk, TPOT from inter-chunk deltas, server usage preferred over chunk counting for token counts, and the streaming-unavailability contract keeps its three signals — the `supported`/`fallback_reason` block in run metadata, `n: 0` aggregates instead of omitted ones, and a warning emitted only when the fallback is not config-intended. Authorization failure still raises; other failures still produce a fallback record with `e2e_time_s: None`.
+**FR7.** Measurement semantics are unchanged: TTFT from the first content chunk, TPOT from inter-chunk deltas, server usage preferred over chunk counting for token counts, and the streaming-unavailability contract keeps its three signals — the `supported`/`fallback_reason` block in run metadata, `n: 0` aggregates instead of omitted ones, and a warning emitted only when the fallback is not config-intended. Authorization failure still raises; other failures still produce a fallback record with `e2e_time_s: None`. The authorization-versus-transient distinction is slam-eval's for now, because the collector is the component that owns the transport on the monitored path; unifying it with rally's own failure behaviour belongs to rally's request work.
 
 **FR8.** Tests assert the collector's request against the `Llm`'s own builder output — equivalence, headers, the thinking key, both cap keys — and the existing measurement, fallback, authorization and streaming-disabled behaviour stays green on the new constructor.
 
 **FR9.** `LocalCausalLm` takes its reasoning-trace removal strategy from rally's family registry — `THINKING_REMOVERS[model_family]` — and keeps no removal rule of its own: no regular expression, no tag parsing.
 
-**FR10.** `LocalCausalLm` declares its model family as a constructor argument set from config, and whether the strategy is applied is controlled by a dedicated boolean config flag, independent of `enable_thinking` — the chat-template flag and the post-processing flag are separate knobs and any combination is allowed.
+**FR10.** `LocalCausalLm` declares its model family as a constructor argument set from config, and whether the strategy is applied is controlled by a dedicated boolean config flag, independent of `enable_thinking` — the chat-template flag and the post-processing flag are separate knobs and any combination is allowed. On the remote path the same `enable_thinking` setting is a request-body field written by rally, so one setting has one applier per transport, and the removal side is asymmetric by design: the in-process path trims under its flag, the remote path never trims.
 
 **FR11.** An unknown or missing family is rally's lookup failing; slam-core adds no validation, default or fallback of its own.
 
 #### 1.3 Non-functional requirements
 
-**NFR1.** rally remains the only place that knows the OpenAI request shape; slam-eval knows only the two streaming keys.
+**NFR1.** rally remains the only place that knows the request envelope — endpoint, headers, field names and their values; slam-core owns the message list it passes in; slam-eval knows only the two streaming keys. The transport itself (asking for a stream and reading its chunks) is rally's to own: the collector holds it only until rally provides a streaming operation, and this spec is then revised to call it, leaving the collector its measurement.
 
 **NFR2.** No new dependencies; the suites run in the existing `~/venvs/slam`.
 
@@ -135,6 +135,7 @@ flowchart LR
     B -->|monitoring off| C[slam-core: Model.predict]
     B -->|monitoring on| F[slam-eval: streaming collector]
     C -->|request| D[rally: Llm]
+    C -->|removal strategy| R[rally: THINKING_REMOVERS]
     F -->|headers and body| D
     F -->|stream and stream_options| D
     D -->|assistant message| C
