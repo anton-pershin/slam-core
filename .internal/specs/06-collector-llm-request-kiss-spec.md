@@ -65,7 +65,35 @@ What is missing: with performance monitoring enabled, slam-eval's streaming coll
 
 ### 2. Tests
 
-[List all the tests explicitly covering all the requirements and the expected variants mentioned in the requirement analysis. Tag them as T1, T2 etc.]
+All tests below are new or re-pointed; "row" refers to the §1.4 variant table.
+
+| # | Test | File | Covers |
+|---|------|------|--------|
+| T1 | `test_build_messages_with_system_and_user` — the shared builder returns `[system, user]` | `slam-core/tests/test_model.py` | row 10 |
+| T2 | `test_build_messages_without_system` — returns `[user]` | same | row 10 |
+| T3 | `test_predict_uses_the_shared_builder` — predict's argument equals `build_messages(x)` and the literal list | same | row 10 |
+| T4 | `test_streaming_body_is_llm_payload_plus_stream_keys` — exact dict equality with `build_payload(messages)` plus `stream`/`stream_options` | `slam-eval/tests/test_performance_monitor.py` | row 7 |
+| T5 | `test_non_streaming_body_is_llm_payload` — exact dict equality with `build_payload(messages)` | same | row 8 |
+| T6 | `test_headers_come_from_the_llm` — equals `build_headers()`; `Authorization` present when configured and absent otherwise | same | rows 5, 6 |
+| T7 | `test_request_goes_to_the_llm_endpoint` | same | row 9 |
+| T8 | `test_thinking_key_reaches_the_collector_body` — configured → `chat_template_kwargs` with the value; unset → key absent | same | rows 1, 2 |
+| T9 | `test_cap_keys_reach_the_collector_body` — configured → both cap keys with the value; unset → neither key and no raise | same | rows 3, 4 |
+| T10 | `test_monitored_request_equals_prediction_request` — same `Llm` and messages: the collector body minus the streaming keys equals the body captured from `Llm.request` | same | row 9 |
+| T11 | existing measurement tests re-pointed to the new constructor: usage-preferred TTFT/TPOT, chunk-count fallback, streaming rejected | same | rows 12, 14 |
+| T12 | existing authorization test (401 → `RuntimeError`) and transport-error test (`e2e_time_s: None`) re-pointed | same | rows 11, 13 |
+| T13 | monitored end-to-end run with a stubbed transport: completes with monitoring enabled, one record per case, no abort | `slam-eval/tests/e2e/test_main.py` | row 4, FR6 |
+| T14 | `test_disabled_in_config_reflected_at_construction` (unchanged) | `slam-eval/tests/test_performance_monitor.py` | config-intended fallback |
+| T15 | thinking on, no content chunks → streaming unavailability reported, not an error | same | row 15 |
+| T16 | thinking on, the content carries a reasoning trace → the trace is returned verbatim (no stripping in the collector) | same | row 16 |
+
+Verification, run with the project interpreter `~/venvs/slam/bin/python` and `SLAM_SHARED_CONFIG_PATH` exported (slam-eval's Hydra composition needs it):
+
+```
+cd slam-core && python -m pytest -q      # baseline: 79 passed
+cd slam-eval && python -m pytest -q      # baseline: 29 passed
+```
+
+NFR5 wire probe: capture the collector's body with a stubbed transport on the pre-change slam-eval (a `git worktree` of its main) and on the change, for streaming and non-streaming with a cap configured, and with `enable_thinking` set and unset. The delta must be exactly `max_completion_tokens` on both paths plus `chat_template_kwargs` when thinking is configured, with nothing removed — measured at implementation time, not asserted from the tests alone.
 
 ### 3. Implementation plan
 
