@@ -89,25 +89,42 @@ NFR6 payload probe: capture the request body with the same stubbed transport on 
 
 #### 3.1 Implementation repos
 
-[List all the repos expected to be involved in any implementation]
+- **slam-core** (management repo) — the OpenAI-compatible model and its tests.
+- **slam-eval** — the end-to-end tests that stub the request at the `Llm` boundary.
+
+No other slam repo is involved: they reach the OpenAI-compatible model only through slam-core.
 
 #### 3.2 High-level design
 
-[Mermaid diagram (typically, flowchart, but it is ultimately up to a planner) describing the high-level design. Take the high-level design from the constitution/validation spec and draw how your proposal fits into it.]
+```mermaid
+flowchart LR
+    A[EvalCaseCollection] --> B[slam-eval: eval loop]
+    B --> C[slam-core: LlmViaOpenAiApi.predict]
+    C -->|self.llm.request messages| D[rally: Llm]
+    D -->|assistant message or None| C
+    C -->|content| B
+    B --> E[EvalStorageAdapter]
+    B -.->|monitoring enabled| F[slam-eval: performance collector]
+    F -.->|builds its own request, unchanged| G[LLM server]
+    D -.-> G
+```
 
 #### 3.3 Todo list
 
-[Write a todo list with all the steps necessary to create an implementation which will allow the tests to be passed. Below is the template where the first two steps are mandatory]
-
 1. [ ] Write the tests
 2. [ ] Run all the tests and ensure that they fail
-3. [ ] ...
+3. [ ] Replace the module-level request call in `slam_core/model.py` with `self.llm.request(messages)`, drop the `rally.interaction` import, and raise an error naming the model when the response is `None`
+4. [ ] Run slam-core's suite and the import check
+5. [ ] Re-point both slam-eval end-to-end stubs to `rally.llm.Llm.request` and run slam-eval's suite
+6. [ ] Run the payload probe against a `main` worktree and record the diff
+7. [ ] Run the linters on the changed files and compare with `main`
+8. [ ] Commit
 
 #### 3.4 Modification summary
 
-[Fill the table below specifying which files are going to be modified and which are going to be created]
-
-| File | Action |
-|------|--------|
-| ... | Modified: add X, modify Y, etc. |
-| ... | New |
+| File | Repo | Action |
+|------|------|--------|
+| `slam_core/model.py` | slam-core | Modified: request through `self.llm`; drop the `rally.interaction` import; raise on a `None` response |
+| `tests/test_model.py` | slam-core | Modified: tests T1–T10 |
+| `tests/e2e/test_main.py` | slam-eval | Modified: re-point both request stubs to `rally.llm.Llm.request` |
+| `.internal/specs/05-rally-request-migration-kiss-spec.md` | slam-core | New |
