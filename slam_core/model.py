@@ -1,12 +1,21 @@
 from __future__ import annotations
 
-import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Optional,
+    Protocol,
+    Sequence,
+    cast,
+    runtime_checkable,
+)
 
 from kygs.classifier import TextClassifier
+from rally.interaction import make_up_message_history
 from rally.llm import Llm
+from rally.thinking import THINKING_REMOVERS
 
 from slam_core.collections.text_generation import TextGenerationInput
 
@@ -41,21 +50,9 @@ class LlmViaOpenAiApi(Model):
         self.llm = llm
 
     def predict(self, x: TextGenerationInput) -> str:
-        messages = []
-
-        if x["system_prompt"] is not None:
-            messages.append(
-                {
-                    "role": "system",
-                    "content": x["system_prompt"],
-                }
-            )
-
-        messages.append(
-            {
-                "role": "user",
-                "content": x["user_prompt"],
-            }
+        messages = make_up_message_history(
+            system_prompt=x["system_prompt"],
+            user_prompt=x["user_prompt"],
         )
 
         resp_message = self.llm.request(messages)
@@ -126,6 +123,8 @@ class LocalCausalLm(Model):
         temperature: float = 1.0,
         device: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
+        model_family: Optional[str] = None,
+        remove_thinking: bool = False,
         step_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
         super().__init__(name)
@@ -142,6 +141,8 @@ class LocalCausalLm(Model):
         self.temperature = temperature
         self.device = device
         self.enable_thinking = enable_thinking
+        self.model_family = model_family
+        self.remove_thinking = remove_thinking
         self.step_callback = step_callback
 
         torch_dtype = torch.float32 if device in (None, "cpu") else torch.float16
@@ -161,26 +162,33 @@ class LocalCausalLm(Model):
         self.model = model
         self.tokenizer = tokenizer
 
-    def predict(self, x: TextGenerationInput) -> str:
-        import torch
-
-        messages: list[dict[str, str]] = []
-        if x["system_prompt"] is not None:
-            messages.append({"role": "system", "content": x["system_prompt"]})
-        messages.append({"role": "user", "content": x["user_prompt"]})
-
-        chat_template_kwargs = (
-            {"enable_thinking": self.enable_thinking}
-            if self.enable_thinking is not None
-            else None
+    def _render_prompt(self, x: TextGenerationInput) -> str:
+        """The exact prompt text the model is given for one input."""
+        messages = make_up_message_history(
+            system_prompt=x["system_prompt"],
+            user_prompt=x["user_prompt"],
         )
         template_args: dict[str, Any] = {
             "tokenize": False,
             "add_generation_prompt": True,
         }
-        if chat_template_kwargs is not None:
-            template_args["chat_template_kwargs"] = chat_template_kwargs
-        prompt_text = self.tokenizer.apply_chat_template(messages, **template_args)
+        if self.enable_thinking is not None:
+            template_args["chat_template_kwargs"] = {
+                "enable_thinking": self.enable_thinking
+            }
+
+        # A single conversation with tokenize=False renders to one string; the
+        # template's annotation also allows its batched and tokenized forms.
+        return cast(str, self.tokenizer.apply_chat_template(messages, **template_args))
+
+    def prompt_token_count(self, x: TextGenerationInput) -> int:
+        """How many tokens the prompt for this input takes."""
+        return len(self.tokenizer(self._render_prompt(x))["input_ids"])
+
+    def predict(self, x: TextGenerationInput) -> str:
+        import torch
+
+        prompt_text = self._render_prompt(x)
         inputs = self.tokenizer(prompt_text, return_tensors="pt").to(self.model.device)
         prompt_length = inputs["input_ids"].shape[1]
 
@@ -219,8 +227,9 @@ class LocalCausalLm(Model):
 
         generated_ids = output_ids[0][prompt_length:]
         completion = self.tokenizer.decode(generated_ids, skip_special_tokens=True)
-        if self.enable_thinking is False:
-            completion = re.sub(
-                r"<think>.*?</think>\s*", "", completion, flags=re.DOTALL
-            ).strip()
-        return completion if isinstance(completion, str) else completion[0]
+        if not isinstance(completion, str):
+            completion = completion[0]
+        if self.remove_thinking:
+            completion = THINKING_REMOVERS[self.model_family](completion)
+
+        return completion
