@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Optional, Protocol, Sequence, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Optional,
+    Protocol,
+    Sequence,
+    cast,
+    runtime_checkable,
+)
 
 from kygs.classifier import TextClassifier
 from rally.interaction import make_up_message_history
@@ -169,7 +177,9 @@ class LocalCausalLm(Model):
                 "enable_thinking": self.enable_thinking
             }
 
-        return self.tokenizer.apply_chat_template(messages, **template_args)
+        # A single conversation with tokenize=False renders to one string; the
+        # template's annotation also allows its batched and tokenized forms.
+        return cast(str, self.tokenizer.apply_chat_template(messages, **template_args))
 
     def prompt_token_count(self, x: TextGenerationInput) -> int:
         """How many tokens the prompt for this input takes."""
