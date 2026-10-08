@@ -130,6 +130,7 @@ Rows 1–6 are not covered by a slam-side test, deliberately: they describe the 
 | T28 | `test_monitoring_enabled_run_completes_without_a_cap` — no cap configured, one record per case, no abort | `slam-eval/tests/e2e/test_main.py` | row 4 |
 | T29 | `test_collector_is_built_from_the_models_llm` | same | row 9 |
 | T30 | `test_in_process_run_counts_prompt_tokens_from_the_model` — the loop no longer applies the chat template itself | same | row 29, FR9 |
+| T31 | `test_config_intended_non_streaming_failure_keeps_its_reason` — a `streaming: false` run whose request fails keeps `disabled_in_config` in the run metadata and records no e2e | same | rows 12–14, 18 |
 
 Verification, run with the project interpreter `~/venvs/slam/bin/python` and `SLAM_SHARED_CONFIG_PATH` exported (slam-eval's Hydra composition needs it):
 
@@ -196,7 +197,7 @@ flowchart LR
 | `tests/test_model.py` | slam-core | Modified: T1–T3 |
 | `tests/test_local_causal_lm.py` | slam-core | Modified: T4–T11 |
 | `slam_eval/performance/openai_collector.py` | slam-eval | Modified: takes the `Llm`; calls `stream`/`request`; measures events; maps the typed errors; records a truncated stream as the completed answer; the per-call cap argument and the hand-rolled framing go |
-| `slam_eval/scripts/main.py` | slam-eval | Modified: rally's helper; the collector is built from the model's `Llm`; the prompt-token count comes from the model; the cap guard is removed |
+| `slam_eval/scripts/main.py` | slam-eval | Modified: rally's helper; the collector is built from the model's `Llm`; the prompt-token count comes from the model; the cap guard is removed; a fallback record that names no reason leaves the run's own reason intact |
 | `tests/test_performance_monitor.py` | slam-eval | Modified: T12–T27 |
 | `tests/e2e/test_main.py` | slam-eval | Modified: T28–T30 |
 | `pyproject.toml` | slam-eval | Modified: isort's `profile = "black"`, so isort and black agree on the wrapped `from rally.llm import (...)` block — the pin rally already carries |
