@@ -5,6 +5,7 @@ import json
 from unittest.mock import Mock, patch
 
 import pytest
+from rally.interaction import make_up_message_history
 from rally.llm import Llm
 
 import slam_core.model as model_module
@@ -46,10 +47,10 @@ class TestLlmViaOpenAiApi:
         model.predict(input_data)
 
         mock_llm.request.assert_called_once_with(
-            [
-                {"role": "system", "content": "You are a helpful assistant"},
-                {"role": "user", "content": "Hello, world!"},
-            ]
+            make_up_message_history(
+                system_prompt="You are a helpful assistant",
+                user_prompt="Hello, world!",
+            )
         )
 
     def test_predict_passes_user_message_only(self):
@@ -67,8 +68,14 @@ class TestLlmViaOpenAiApi:
         model.predict(input_data)
 
         mock_llm.request.assert_called_once_with(
-            [{"role": "user", "content": "Hello, world!"}]
+            make_up_message_history(
+                system_prompt=None,
+                user_prompt="Hello, world!",
+            )
         )
+        assert mock_llm.request.call_args.args[0] == [
+            {"role": "user", "content": "Hello, world!"}
+        ]
 
     def test_predict_returns_llm_content(self):
         mock_llm = make_llm()
@@ -149,13 +156,37 @@ class TestLlmViaOpenAiApi:
 
         assert model.predict(input_data) == content
 
+    def test_predict_goes_through_rallys_helper(self):
+        mock_llm = make_llm()
+        mock_llm.request.return_value = {"role": "assistant", "content": "ok"}
+        model = LlmViaOpenAiApi("test_model", mock_llm)
+        calls = []
+
+        def record(system_prompt, user_prompt):
+            calls.append((system_prompt, user_prompt))
+            return make_up_message_history(
+                system_prompt=system_prompt, user_prompt=user_prompt
+            )
+
+        with patch.object(model_module, "make_up_message_history", record):
+            model.predict(
+                TextGenerationInput(system_prompt="be nice", user_prompt="hello")
+            )
+
+        assert calls == [("be nice", "hello")]
+        assert mock_llm.request.call_args.args == (
+            [
+                {"role": "system", "content": "be nice"},
+                {"role": "user", "content": "hello"},
+            ],
+        )
+
     def test_module_surface_has_no_removed_request_functions(self):
         assert not hasattr(model_module, "request_based_on_message_history")
         assert not hasattr(model_module, "request_based_on_prompts")
         assert model_module.Llm is Llm
 
         source = inspect.getsource(model_module)
-        assert "rally.interaction" not in source
         assert "request_based_on" not in source
 
     @patch("rally.llm.requests.post")

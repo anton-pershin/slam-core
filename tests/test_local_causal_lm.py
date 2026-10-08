@@ -18,6 +18,7 @@ from transformers import (  # noqa: E402
     PreTrainedTokenizerFast,
 )
 
+import slam_core.model as model_module  # noqa: E402
 from slam_core.collections.text_generation import TextGenerationInput  # noqa: E402
 from slam_core.model import LocalCausalLm  # noqa: E402
 
@@ -146,17 +147,14 @@ class TestLocalCausalLm:
 
         assert "chat_template_kwargs" not in calls[0]
 
-    @pytest.mark.parametrize("enable_thinking", [False, True, None])
-    def test_thinking_markup_cleanup_modes(
-        self, tiny_model_dir, enable_thinking, monkeypatch
-    ):
+    def _model_with_recorded_decode(
+        self, tiny_model_dir: str, monkeypatch, completion: str, **kwargs: object
+    ) -> LocalCausalLm:
+        """A model whose generation is stubbed to return ``completion``."""
         import torch
 
         model = LocalCausalLm(
-            name="tiny",
-            base_model_path=tiny_model_dir,
-            max_new_tokens=1,
-            enable_thinking=enable_thinking,
+            name="tiny", base_model_path=tiny_model_dir, max_new_tokens=1, **kwargs
         )
         original_template = model.tokenizer.apply_chat_template
         prompt_text = original_template(
@@ -164,7 +162,6 @@ class TestLocalCausalLm:
             tokenize=False,
             add_generation_prompt=True,
         )
-        prompt_length = len(model.tokenizer(prompt_text)["input_ids"])
         monkeypatch.setattr(
             model.model,
             "generate",
@@ -175,20 +172,149 @@ class TestLocalCausalLm:
         monkeypatch.setattr(
             model.tokenizer,
             "decode",
-            lambda generated_ids, skip_special_tokens: (
-                '<think>\n\n</think>\n\n{"name": "Alice"}'
-            ),
+            lambda generated_ids, skip_special_tokens: completion,
+        )
+        return model
+
+    @pytest.mark.parametrize("family", ["qwen3", "qwq", "qwen2.5"])
+    def test_removal_strategy_comes_from_rally_registry(
+        self, tiny_model_dir, family, monkeypatch
+    ):
+        completion = '<think>\n\n</think>\n\n{"name": "Alice"}'
+        model = self._model_with_recorded_decode(
+            tiny_model_dir,
+            monkeypatch,
+            completion,
+            model_family=family,
+            remove_thinking=True,
+        )
+
+        seen = []
+
+        def recorder(text: str) -> str:
+            seen.append(text)
+            return "REMOVED"
+
+        monkeypatch.setitem(model_module.THINKING_REMOVERS, family, recorder)
+        result = model.predict(
+            TextGenerationInput(system_prompt=None, user_prompt="hello")
+        )
+
+        assert seen == [completion]
+        assert result == "REMOVED"
+
+    def test_remove_thinking_flag_off_returns_the_completion_verbatim(
+        self, tiny_model_dir, monkeypatch
+    ):
+        completion = '<think>\n\n</think>\n\n{"name": "Alice"}'
+        model = self._model_with_recorded_decode(
+            tiny_model_dir,
+            monkeypatch,
+            completion,
+            model_family="qwen3",
+            remove_thinking=False,
+        )
+        called = []
+        monkeypatch.setitem(
+            model_module.THINKING_REMOVERS,
+            "qwen3",
+            lambda text: called.append(text) or "REMOVED",
         )
 
         result = model.predict(
             TextGenerationInput(system_prompt=None, user_prompt="hello")
         )
 
-        if enable_thinking is False:
-            assert result == '{"name": "Alice"}'
-        else:
-            assert result == '<think>\n\n</think>\n\n{"name": "Alice"}'
-        assert prompt_length > 0
+        assert result == completion
+        assert called == []
+
+    @pytest.mark.parametrize(
+        "remove_thinking, enable_thinking, trimmed",
+        [(True, True, True), (False, False, False)],
+    )
+    def test_remove_thinking_and_enable_thinking_are_independent(
+        self, tiny_model_dir, monkeypatch, remove_thinking, enable_thinking, trimmed
+    ):
+        completion = "raw completion"
+        model = self._model_with_recorded_decode(
+            tiny_model_dir,
+            monkeypatch,
+            completion,
+            model_family="qwen3",
+            enable_thinking=enable_thinking,
+            remove_thinking=remove_thinking,
+        )
+        monkeypatch.setitem(
+            model_module.THINKING_REMOVERS, "qwen3", lambda text: "TRIMMED"
+        )
+
+        result = model.predict(
+            TextGenerationInput(system_prompt=None, user_prompt="hello")
+        )
+
+        assert result == ("TRIMMED" if trimmed else completion)
+
+    def test_unknown_family_is_not_handled_by_slam_core(
+        self, tiny_model_dir, monkeypatch
+    ):
+        model = self._model_with_recorded_decode(
+            tiny_model_dir,
+            monkeypatch,
+            "raw completion",
+            model_family="not-a-family",
+            remove_thinking=True,
+        )
+
+        with pytest.raises(KeyError):
+            model.predict(TextGenerationInput(system_prompt=None, user_prompt="hello"))
+
+    def test_prompt_token_count_matches_the_prompt_the_model_is_given(
+        self, tiny_model_dir
+    ):
+        model = LocalCausalLm(
+            name="tiny", base_model_path=tiny_model_dir, max_new_tokens=1
+        )
+        x = TextGenerationInput(system_prompt="be nice", user_prompt="hello")
+        prompt_text = model.tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": "be nice"},
+                {"role": "user", "content": "hello"},
+            ],
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+
+        assert model.prompt_token_count(x) == len(
+            model.tokenizer(prompt_text)["input_ids"]
+        )
+
+    def test_prompt_token_count_uses_the_same_template_call_as_predict(
+        self, tiny_model_dir, monkeypatch
+    ):
+        model = LocalCausalLm(
+            name="tiny",
+            base_model_path=tiny_model_dir,
+            max_new_tokens=1,
+            enable_thinking=False,
+        )
+        calls = []
+        original = model.tokenizer.apply_chat_template
+
+        def record(messages, **kwargs):
+            calls.append((messages, kwargs))
+            return original(messages, **kwargs)
+
+        monkeypatch.setattr(model.tokenizer, "apply_chat_template", record)
+        x = TextGenerationInput(system_prompt="be nice", user_prompt="hello")
+        model.predict(x)
+        model.prompt_token_count(x)
+
+        assert calls[0] == calls[1]
+        assert calls[0][0] == [
+            {"role": "system", "content": "be nice"},
+            {"role": "user", "content": "hello"},
+        ]
+        assert calls[0][1]["chat_template_kwargs"] == {"enable_thinking": False}
 
     def test_output_does_not_contain_prompt(self, tiny_model_dir):
         # The returned string must be exactly the decode of the tokens
