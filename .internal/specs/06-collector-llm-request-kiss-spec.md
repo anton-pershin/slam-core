@@ -199,8 +199,9 @@ flowchart LR
 | `slam_eval/scripts/main.py` | slam-eval | Modified: rally's helper; the collector is built from the model's `Llm`; the prompt-token count comes from the model; the cap guard is removed |
 | `tests/test_performance_monitor.py` | slam-eval | Modified: T12–T27 |
 | `tests/e2e/test_main.py` | slam-eval | Modified: T28–T30 |
+| `pyproject.toml` | slam-eval | Modified: isort's `profile = "black"`, so isort and black agree on the wrapped `from rally.llm import (...)` block — the pin rally already carries |
 | `.internal/specs/06-collector-llm-request-kiss-spec.md` | slam-core | New |
 
 Spec 04's FR5 and AC5 describe slam-eval performing the streaming request itself; this spec supersedes that aspect of them — the transport becomes rally's — while the measurement those criteria describe is unchanged.
 
-No config file in slam-eval changes, and no `timeout` key is added anywhere (row 13 stays descriptive while no timeout is configured). The collector's public shape becomes `OpenAiStreamingCollector(llm)` with `measure(messages, non_streaming=False)`: the `url`, `authorization` and `model` arguments and the `max_output_tokens` argument disappear.
+No slam-eval config file changes (only the tooling pin in its `pyproject.toml`), and no `timeout` key is added anywhere (row 13 stays descriptive while no timeout is configured). The collector's public shape becomes `OpenAiStreamingCollector(llm)` with `measure(messages, non_streaming=False)`: the `url`, `authorization` and `model` arguments and the `max_output_tokens` argument disappear.
