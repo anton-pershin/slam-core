@@ -144,23 +144,26 @@ NFR5 wire probe, restated for the new shape: the collector no longer builds a bo
 
 #### 3.1 Implementation repos
 
-- **slam-core** (management repo) — the shared message builder, the local model's thinking-removal change, the model config, and their tests.
-- **slam-eval** — the collector (constructor, headers and body from the `Llm`), the eval-loop wiring, and the tests.
+- **slam-core** (management repo) — the two predict paths calling rally's message helper, the local model's thinking removal, prompt-token count, model family and removal flag, their config, and their tests.
+- **slam-eval** — the collector, the eval-loop wiring, and their tests.
+- **rally** — nothing to implement: the helper widening is a landed prerequisite (`4e7ec26`), recorded here as such rather than as a task of this spec.
 
 #### 3.2 High-level design
 
 ```mermaid
 flowchart LR
     A[EvalCaseCollection] --> B[slam-eval: eval loop]
-    B -->|shared message builder| M[slam-core: build_messages]
+    B -->|system and user prompts| M[rally: make_up_message_history]
+    M -->|messages| B
     B -->|monitoring off| C[slam-core: Model.predict]
     B -->|monitoring on| F[slam-eval: streaming collector]
-    C -->|request| D[rally: Llm]
-    C -->|removal strategy| R[rally: THINKING_REMOVERS]
-    F -->|headers and body| D
-    F -->|stream and stream_options| D
+    B -->|prompt-token count| G[slam-core: LocalCausalLm]
+    C -->|messages| D[rally: Llm]
+    C -->|reasoning trace| R[rally: THINKING_REMOVERS]
+    F -->|streamed messages| D
     D -->|assistant message| C
-    D -->|stream chunks| F
+    D -->|typed events| F
+    D -->|typed failure| F
     B --> E[EvalStorageAdapter]
     B --> P[performance storage]
 ```
@@ -169,25 +172,30 @@ flowchart LR
 
 1. [ ] Write the tests
 2. [ ] Run all the tests and ensure that they fail
-3. [ ] slam-core: add the shared message builder and use it in `predict` (T1–T3)
-4. [ ] slam-eval: the collector takes the `Llm`, obtains headers and body from it, layers only the streaming keys, and drops the per-call cap argument (T4–T12, T15, T16)
-5. [ ] slam-eval: the eval loop uses the shared builder, the collector is built from the model's `Llm`, and the cap guard is gone (T13)
-6. [ ] slam-core: `LocalCausalLm` takes `model_family` and `remove_thinking`, removes its own regex, and trims through rally's registry; add both keys to the local model config (T17–T22)
-7. [ ] Run both suites
-8. [ ] Run the NFR5 wire probe against a pre-change worktree
-9. [ ] Run the linters and compare with the pre-change revision
-10. [ ] Commit
+3. [ ] slam-core: both predict paths take their messages from rally's `make_up_message_history`, and no private builder survives (T1–T3)
+4. [ ] slam-core: `LocalCausalLm` takes `model_family` and `remove_thinking`, drops its regex, and trims through rally's registry (T4–T7)
+5. [ ] slam-core: `LocalCausalLm` answers `prompt_token_count` for the input it sends (T8–T9)
+6. [ ] slam-core: add `remove_thinking` and `model_family` to the local model config (T4–T7)
+7. [ ] slam-eval: the collector takes the `Llm`, calls `stream`/`request`, measures the typed events, maps rally's errors to its records, records a truncated stream as the completed answer, and drops the per-call cap argument (T12–T27)
+8. [ ] slam-eval: the eval loop uses rally's helper, builds the collector from the model's `Llm`, takes the prompt-token count from the model, and the cap guard is gone (T28–T30)
+9. [ ] Run both suites
+10. [ ] Run the NFR5 wire probe against a pre-change worktree
+11. [ ] Run the linters and compare with the pre-change revision
+12. [ ] Commit
 
 #### 3.4 Modification summary
 
 | File | Repo | Action |
 |------|------|--------|
-| `slam_core/model.py` | slam-core | Modified: add the shared message builder and use it in `predict`; `LocalCausalLm` gains `model_family` and `remove_thinking` and trims through rally's registry instead of its own regex |
+| `rally/interaction.py` | rally | **Prerequisite, already landed** (`4e7ec26`): the helper accepts an absent system prompt |
+| `slam_core/model.py` | slam-core | Modified: both predict paths call rally's helper; `LocalCausalLm` gains `model_family` and `remove_thinking`, loses its regex, trims through `THINKING_REMOVERS`, answers `prompt_token_count` |
 | `config/model/local_hf_causal_lm.yaml` | slam-core | Modified: `remove_thinking: true`, `model_family: qwen3` |
 | `tests/test_model.py` | slam-core | Modified: T1–T3 |
-| `tests/test_local_causal_lm.py` | slam-core | Modified: T17–T22 |
-| `slam_eval/performance/openai_collector.py` | slam-eval | Modified: constructor takes the `Llm`; headers and body from `build_headers()`/`build_payload()`; streaming keys layered; per-call cap argument dropped |
-| `slam_eval/scripts/main.py` | slam-eval | Modified: shared message builder, collector from the model's `Llm`, cap guard removed |
-| `tests/test_performance_monitor.py` | slam-eval | Modified: T4–T12, T14–T16 |
-| `tests/e2e/test_main.py` | slam-eval | Modified: T13 |
+| `tests/test_local_causal_lm.py` | slam-core | Modified: T4–T11 |
+| `slam_eval/performance/openai_collector.py` | slam-eval | Modified: takes the `Llm`; calls `stream`/`request`; measures events; maps the typed errors; records a truncated stream as the completed answer; the per-call cap argument and the hand-rolled framing go |
+| `slam_eval/scripts/main.py` | slam-eval | Modified: rally's helper; the collector is built from the model's `Llm`; the prompt-token count comes from the model; the cap guard is removed |
+| `tests/test_performance_monitor.py` | slam-eval | Modified: T12–T27 |
+| `tests/e2e/test_main.py` | slam-eval | Modified: T28–T30 |
 | `.internal/specs/06-collector-llm-request-kiss-spec.md` | slam-core | New |
+
+No config file in slam-eval changes, and no `timeout` key is added anywhere (row 13 stays descriptive while no timeout is configured). The collector's public shape becomes `OpenAiStreamingCollector(llm)` with `measure(messages, non_streaming=False)`: the `url`, `authorization` and `model` arguments and the `max_output_tokens` argument disappear.
