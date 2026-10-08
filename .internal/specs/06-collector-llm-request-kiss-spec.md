@@ -96,6 +96,8 @@ All tests below are new or re-pointed; "row" refers to the §1.4 variant table.
 
 Test infrastructure: the collector's tests need no HTTP server and no stub transport. They use a stub `Llm` whose `stream()` yields scripted `LlmStreamEvent`s and records the messages it was called with, whose `request()` returns a scripted message, and which raises rally's own error classes to script failures. Timing tests insert a short sleep between yielded events, so TTFT and TPOT are measurable and ordered.
 
+Rows 1–6 are not covered by a slam-side test, deliberately: they describe the request body, and after this change the body is rally's, so they hold by construction and are covered by rally's own payload tests. The wire delta itself is measured by the NFR5 probe below rather than asserted by a unit test.
+
 | # | Test | File | Covers |
 |---|------|------|--------|
 | T1 | `test_predict_passes_system_and_user_messages` — re-pointed: the argument equals rally's `make_up_message_history(...)`, not a private list | `slam-core/tests/test_model.py` | row 10 |
@@ -173,7 +175,7 @@ flowchart LR
 1. [ ] Write the tests
 2. [ ] Run all the tests and ensure that they fail
 3. [ ] slam-core: both predict paths take their messages from rally's `make_up_message_history`, and no private builder survives (T1–T3)
-4. [ ] slam-core: `LocalCausalLm` takes `model_family` and `remove_thinking`, drops its regex, and trims through rally's registry (T4–T7)
+4. [ ] slam-core: `LocalCausalLm` takes `model_family` and `remove_thinking`, drops its regex, and trims through rally's registry; the existing template and callback tests stay green (T4–T11)
 5. [ ] slam-core: `LocalCausalLm` answers `prompt_token_count` for the input it sends (T8–T9)
 6. [ ] slam-core: add `remove_thinking` and `model_family` to the local model config (T4–T7)
 7. [ ] slam-eval: the collector takes the `Llm`, calls `stream`/`request`, measures the typed events, maps rally's errors to its records, records a truncated stream as the completed answer, and drops the per-call cap argument (T12–T27)
@@ -197,5 +199,7 @@ flowchart LR
 | `tests/test_performance_monitor.py` | slam-eval | Modified: T12–T27 |
 | `tests/e2e/test_main.py` | slam-eval | Modified: T28–T30 |
 | `.internal/specs/06-collector-llm-request-kiss-spec.md` | slam-core | New |
+
+Spec 04's FR5 and AC5 describe slam-eval performing the streaming request itself; this spec supersedes that aspect of them — the transport becomes rally's — while the measurement those criteria describe is unchanged.
 
 No config file in slam-eval changes, and no `timeout` key is added anywhere (row 13 stays descriptive while no timeout is configured). The collector's public shape becomes `OpenAiStreamingCollector(llm)` with `measure(messages, non_streaming=False)`: the `url`, `authorization` and `model` arguments and the `max_output_tokens` argument disappear.
