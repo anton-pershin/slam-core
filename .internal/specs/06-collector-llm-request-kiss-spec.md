@@ -6,7 +6,7 @@
 
 The ecosystem requirement is that one place decides what an LLM request is (constitution FR5 "shared core", NFR4 "modularity"): rally owns the request shape, slam-core wraps it in `Model` classes, and a consumer must not rebuild a request of its own.
 
-What is missing: with performance monitoring enabled, slam-eval's streaming collector performs the prediction itself and builds that request from scratch — its own endpoint, its own headers, its own field list, its own copy of the message assembly, and its own transport: it frames the stream, strips `data:`, looks for `[DONE]`, reads deltas and the usage chunk, and classifies failures from HTTP codes. Generation behaviour configured on the `Llm` never reaches the measured request, so the output-token cap and thinking control are dead configuration while monitoring is on and the two paths disagree about the same config. The request the eval measures is only assumed to be the request `predict` would make, because nothing compares them. And the transport duplicates rally's streaming operation (`Llm.stream`, landed), which already owns the framing, the provider dialect, end-of-stream, the timeout and the failure family.
+What is missing: with performance monitoring enabled, slam-eval's streaming collector performs the prediction itself and builds that request from scratch — its own endpoint, its own headers, its own field list, its own copy of the message assembly, and its own transport: it frames the stream, strips `data:`, looks for `[DONE]`, reads deltas and the usage chunk, and classifies failures from HTTP codes. Generation behaviour configured on the `Llm` never reaches the measured request, so the output-token cap and thinking control are dead configuration while monitoring is on and the two paths disagree about the same config. The request the eval measures is only assumed to be the request `predict` would make, because nothing compares them. And the transport duplicates rally's streaming operation (`Llm.stream`, landed), which already owns the framing, the provider dialect, end-of-stream, the timeout and the failure family, and which marks a stream the cap cut short.
 
 The same requirement applies on the response side. How a reasoning trace is removed from a completion depends on the model family, and rally owns that rule (`THINKING_REMOVERS`). slam-core's local in-process model instead implements one hard-coded removal of its own, coupled to the thinking flag: it cannot express per-family strategies, and what it removes is not the ecosystem's rule.
 
@@ -28,7 +28,7 @@ Two further rules rally already owns are kept as copies inside slam. The message
 
 **FR7.** Measurement semantics are unchanged: TTFT from the arrival of the first event carrying content, TPOT from inter-event arrival deltas, server usage preferred over content-event counting for the token counts, and the streaming-unavailability contract keeps its three signals — the `supported`/`fallback_reason` block in run metadata, `n: 0` aggregates instead of omitted ones, and a warning emitted only when the fallback is not config-intended.
 
-**FR8.** A stream the server ends by truncation — `finish_reason: "length"` — is the completed answer, not a failure: the content that arrived (possibly none) is recorded as the answer, with the timings that content allows, the token counts as usual, `supported: true` and no warning. The streaming-unavailability path therefore applies only to a request that failed, or to a stream that produced no content and did not declare truncation.
+**FR8.** A stream rally marks as truncated — the semantic reading of the server declaring that the cap ended the completion — is the completed answer, not a failure: the content that arrived (possibly none) is recorded as the answer, with the timings that content allows, the token counts as usual, `supported: true` and no warning. The streaming-unavailability path therefore applies only to a request that failed, or to a stream that produced no content and was not marked truncated.
 
 **FR9.** `LocalCausalLm` answers the prompt-token count for the input it actually sends, and the eval loop takes its prompt-token count from there instead of re-deriving the chat template, so the counted prompt cannot drift from the sent prompt.
 
@@ -52,7 +52,7 @@ Two further rules rally already owns are kept as copies inside slam. The message
 
 **NFR6.** The consequences of the thinking flag now applying are accepted and documented: the streamed content may carry the reasoning trace, which becomes `y_pred` and therefore the score; TTFT and `generated_tokens` include the reasoning while the flag is on, so thinking-on and thinking-off runs are not comparable; and a cap below the reasoning budget truncates the stream, which is recorded as the completed (possibly empty) answer per FR8 rather than as a failure. No removal of the trace happens in the collector — slam-core strips it only on the in-process path.
 
-**NFR7.** Scope: the memory sampler, the statistics registry and the storage adapter are untouched. rally is modified only by the `make_up_message_history` widening, which lands on its own without a spec; everything else stays inside slam-core and slam-eval.
+**NFR7.** Scope: the memory sampler, the statistics registry and the storage adapter are untouched. rally is modified only by two small changes that land on their own without a spec — the `make_up_message_history` widening and the `truncated` flag on the streamed event; everything else stays inside slam-core and slam-eval.
 
 **NFR8.** The behaviour changes of adopting rally's strategies are recorded, not hidden: with the flag on and family `qwen3` the completion becomes what rally's entry returns (as the registry stands, the last line), where today the block is stripped and the whole remaining text is kept; with family `qwen2.5` nothing is removed, where today the block is stripped; and with the flag off nothing is removed regardless of `enable_thinking`, where today thinking-disabled implies removal.
 
@@ -74,9 +74,9 @@ Two further rules rally already owns are kept as copies inside slam. The message
 | 12 | other HTTP status | rally raises `LlmStreamRejectedError`; fallback record, `supported: false`, `fallback_reason: streaming_request_rejected`, warning unless config-intended |
 | 13 | no data within a configured timeout | rally raises `LlmTimeoutError`; fallback record with `e2e_time_s: None` (unreachable while no timeout is configured — accepted) |
 | 14 | transport error, including a stream dropped mid-answer | rally raises `LlmTransportError`; fallback record with `e2e_time_s: None`, never a fabricated zero |
-| 15 | stream ends truncated by the cap, some content arrived | the answer is what arrived; recorded as the completed answer — `supported: true`, no warning (FR8) |
+| 15 | stream ends truncated by the cap and rally marks it `truncated`, some content arrived | the answer is what arrived; recorded as the completed answer — `supported: true`, no warning (FR8) |
 | 16 | stream ends truncated by the cap, no content arrived (the reasoning consumed the budget) | the empty answer is recorded as the completed one (FR8); no fallback, no warning |
-| 17 | stream ends with no content and no declared truncation | streaming unavailability is reported, not an error, with a warning unless config-intended |
+| 17 | stream ends with no content and is not marked truncated | streaming unavailability is reported, not an error, with a warning unless config-intended |
 | 18 | non-streaming request fails | rally's `request()` returns `None`: fallback record with `e2e_time_s: None` and no reason (the accepted coarseness of NFR4) |
 | 19 | server reports no usage | token counts from content-event counting, `tokens_source: chunk_count`, usage warning (unchanged) |
 | 20 | thinking on and the content carries a reasoning trace | the trace reaches `y_pred` and the score follows it (accepted consequence) |
@@ -120,9 +120,9 @@ Rows 1–6 are not covered by a slam-side test, deliberately: they describe the 
 | T18 | `test_rejected_streaming_request_falls_back` — `LlmStreamRejectedError` yields `streaming_request_rejected` | same | row 12 |
 | T19 | `test_transport_error_falls_back_without_e2e` — `LlmTransportError` yields `e2e_time_s: None` | same | row 14 |
 | T20 | `test_timeout_gives_the_same_record_as_a_transport_error` | same | row 13 |
-| T21 | `test_truncated_stream_is_the_completed_answer` — reasoning-only events ending with `finish_reason: "length"`: `streaming_failed: False`, content empty, `supported: true`, no warning | same | rows 15, 16 |
+| T21 | `test_truncated_stream_is_the_completed_answer` — reasoning-only events followed by an event marked `truncated`: `streaming_failed: False`, content empty, `supported: true`, no warning | same | rows 15, 16 |
 | T22 | `test_truncated_stream_with_partial_content_keeps_the_content` | same | row 15 |
-| T23 | `test_no_content_and_no_finish_reason_reports_unavailability` | same | row 17 |
+| T23 | `test_no_content_and_not_truncated_reports_unavailability` | same | row 17 |
 | T24 | `test_non_streaming_failure_record_shape` — `request()` returns `None`: fallback with `e2e_time_s: None` and no reason | same | row 18 |
 | T25 | `test_thinking_trace_in_content_reaches_y_pred_verbatim` | same | row 20 |
 | T26 | `test_collector_and_predict_send_the_same_messages` — the same `Llm` and case: the collector's `stream` call and `LlmViaOpenAiApi.predict`'s `request` call receive equal message lists | same | rows 9, 10 |
@@ -148,7 +148,7 @@ NFR5 wire probe, restated for the new shape: the collector no longer builds a bo
 
 - **slam-core** (management repo) — the two predict paths calling rally's message helper, the local model's thinking removal, prompt-token count, model family and removal flag, their config, and their tests.
 - **slam-eval** — the collector, the eval-loop wiring, and their tests.
-- **rally** — nothing to implement: the helper widening is a landed prerequisite (`4e7ec26`), recorded here as such rather than as a task of this spec.
+- **rally** — nothing to implement: two landed prerequisites, the helper widening (`4e7ec26`) and the semantic `truncated` flag on the streamed event (`9da6f60`), recorded here as such rather than as tasks of this spec.
 
 #### 3.2 High-level design
 
@@ -190,6 +190,7 @@ flowchart LR
 | File | Repo | Action |
 |------|------|--------|
 | `rally/interaction.py` | rally | **Prerequisite, already landed** (`4e7ec26`): the helper accepts an absent system prompt |
+| `rally/llm.py` | rally | **Prerequisite, already landed** (`9da6f60`): the streamed event carries a semantic `truncated` flag, so no consumer reads the provider's reason |
 | `slam_core/model.py` | slam-core | Modified: both predict paths call rally's helper; `LocalCausalLm` gains `model_family` and `remove_thinking`, loses its regex, trims through `THINKING_REMOVERS`, answers `prompt_token_count` |
 | `config/model/local_hf_causal_lm.yaml` | slam-core | Modified: `remove_thinking: true`, `model_family: qwen3` |
 | `tests/test_model.py` | slam-core | Modified: T1–T3 |
